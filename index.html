@@ -71,7 +71,8 @@ ol.blocks li.done::before{color:var(--accent)}
 .grid button.no{background:var(--bad);color:#fff;border-color:transparent}
 .fbk{min-height:3.2em;font-size:17px;margin:4px 0}
 .fbk.ok{color:var(--good)}.fbk.no{color:var(--bad)}
-#earVoice{margin:0;min-height:1.4em}#earVoice:empty{display:none}#earVoice.no{color:var(--bad)}#earVoice button{padding:4px 10px;font-size:14px;margin:0 4px}#earVoice q{color:var(--ink);font-weight:600}
+#earVoice{margin:0;min-height:1.4em}#earVoice:empty{display:none}#earVoice.no{color:var(--bad)}#hfLogBox{margin:6px 0}#hfLogBox pre{white-space:pre-wrap;font-size:12px;max-height:40vh;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px}#hfLogBox button{padding:4px 10px;font-size:14px;margin:6px 0}
+#earVoice button{padding:4px 10px;font-size:14px;margin:0 4px}#earVoice q{color:var(--ink);font-weight:600}
 .board{display:flex;justify-content:center;margin:10px 0 4px}
 .board svg{max-width:100%;height:auto;display:block}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
@@ -186,6 +187,7 @@ label.wide input{width:100%}
   <div class="row" id="earVoiceRow"><label class="sel">Voice <select id="earVoicePick"></select></label></div>
   <div class="grid" id="earAns"></div>
   <p class="small" id="earVoice" aria-live="polite"></p>
+  <details id="hfLogBox" class="small"><summary>Voice log (for troubleshooting)</summary><button class="ghost" id="hfCopy">Copy log</button><pre id="hfLog"></pre></details>
   <p class="fbk" id="earFb">Tap New note. You'll hear the key, then a note.</p>
   <div class="stats" id="earStats"></div>
 </section>
@@ -447,7 +449,7 @@ function rEar(){
   $('#earKeyRow').style.display=(t==='deg'||t==='echo')?'flex':'none';
   $('#earSlow').style.display=t==='echo'?'':'none';
   $('#earMic').style.display=t==='echo'&&!MIC.blocked?'':'none';
-  $('#earHfRow').style.display=t==='echo'?'none':'';$('#earVoiceRow').style.display=t==='echo'||!HF.on?'none':'';if(HF.on)fillVoices();$('#earHf').checked=HF.on;
+  $('#earHfRow').style.display=t==='echo'?'none':'';$('#earVoiceRow').style.display=$('#hfLogBox').style.display=t==='echo'||!HF.on?'none':'';if(HF.on)fillVoices();$('#earHf').checked=HF.on;
   $('#earNew').textContent=t==='echo'?'New phrase':t==='chord'?'New chord':'New note';
   $('#earAns').style.gridTemplateColumns=t==='echo'?'repeat(3,1fr)':'';
   $('#earAns').innerHTML=earPool().map(o=>`<button data-a="${o.a}">${o.l}</button>`).join('');
@@ -565,6 +567,10 @@ $('#earDrone').onclick=()=>drone?stopDrone():startDrone(+$('#earKey').value);
 
 /* hands-free: answer Ear quizzes by voice (Web Speech API) */
 var HF={hold:false,on:false,rec:null,timer:null,adv:null,until:0,utt:null};
+// troubleshooting log: what the browser's speech engine reports, step by step
+const HFL=[],HFT0=performance.now();
+function hfLog(m){HFL.push(((performance.now()-HFT0)/1000).toFixed(1)+'s '+m);if(HFL.length>150)HFL.shift();
+  const el=$('#hfLog');if(el&&$('#hfLogBox').open)el.textContent=HFL.join('\n')}
 const HF_WAIT=60000; // keep listening this long for an answer before pausing
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const HF_KEY='woodshed-handsfree';
@@ -640,32 +646,34 @@ function fillVoices(){const sel=$('#earVoicePick'),vs=enVoices(),cur=pickVoice()
   if(cur)sel.value=cur.voiceURI}
 if(window.speechSynthesis)speechSynthesis.addEventListener('voiceschanged',()=>{if(HF.on)fillVoices()});
 $('#earVoicePick').onchange=e=>{try{localStorage.setItem(VOICE_KEY,e.target.value)}catch(err){}say('Nice. That was the flat three.')};
-function say(txt,done){let fired=false;const fin=()=>{if(!fired){fired=true;if(done)done()}};
+function say(txt,done){let fired=false;const fin=why=>{if(!fired){fired=true;if(why)hfLog('speech '+why);if(done)done()}};
   if(window.speechSynthesis&&window.SpeechSynthesisUtterance){try{speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(txt),v=pickVoice();if(v){try{u.voice=v;u.lang=v.lang}catch(e){}}u.rate=1;u.onend=fin;u.onerror=fin;HF.utt=u;speechSynthesis.speak(u);
-    setTimeout(fin,3000+txt.length*70);return}catch(e){}}
+    const u=new SpeechSynthesisUtterance(txt),v=pickVoice();if(v){try{u.voice=v;u.lang=v.lang}catch(e){}}u.rate=1;u.onend=()=>fin('ended');u.onerror=e=>fin('error: '+(e&&e.error));HF.utt=u;speechSynthesis.speak(u);
+    setTimeout(()=>fin('timed out (no end event)'),3000+txt.length*70);return}catch(e){}}
   setTimeout(fin,600)}
 const earOn=()=>$('#v-ear').classList.contains('on')&&!document.hidden;
 function voiceMsg(html,bad){const el=$('#earVoice');el.className='small'+(bad?' no':'');el.innerHTML=html}
 // Android Chrome allows one recognition session at a time: stopping one is not instant, and starting
 // another before the last has ended fails silently. HF.live is the session that hasn't ended yet.
 function hfStop(){clearTimeout(HF.timer);HF.timer=null;const r=HF.rec;HF.rec=null;
-  if(r){try{r.abort()}catch(e){}setTimeout(()=>{if(HF.live===r)HF.live=null},1500)}}
-function hfSet(on){HF.on=on;$('#earHf').checked=on;$('#earVoiceRow').style.display=on?'':'none';if(on)fillVoices();try{localStorage.setItem(HF_KEY,on?'1':'')}catch(e){}
+  if(r){hfLog('stop: aborting session #'+r.n);try{r.abort()}catch(e){}setTimeout(()=>{if(HF.live===r)HF.live=null},1500)}}
+function hfSet(on){HF.on=on;$('#earHf').checked=on;$('#earVoiceRow').style.display=$('#hfLogBox').style.display=on?'':'none';hfLog('hands-free '+(on?'on':'off'));if(on)fillVoices();try{localStorage.setItem(HF_KEY,on?'1':'')}catch(e){}
   if(!on){hfStop();clearTimeout(HF.adv);if(window.speechSynthesis)speechSynthesis.cancel()}}
 function hfFail(msg){hfSet(false);voiceMsg(msg+' Tapping still works.',true)}
 // listen once the question's sound has finished, so the app doesn't hear itself
 function hfSchedule(){hfStop();clearTimeout(HF.adv);const c=E.cur;
   if(!HF.on||!c||c.t==='echo'||c.ans)return;
+  hfLog('question '+c.t+' answer='+c.s+' | audio '+(ac?ac.state:'-')+' | listen in '+(({deg:3200,int:800,chord:1000}[c.t]||0)+900)+'ms');
   HF.until=performance.now()+HF_WAIT;HF.hold=false;voiceMsg('Listen…');
   HF.timer=setTimeout(()=>hfListen(c),({deg:3200,int:800,chord:1000}[c.t]||0)+900)}
 function hfListen(c,tries){tries=tries||0;
-  hfStop();if(!HF.on||E.cur!==c||c.ans||!earOn())return;
+  hfStop();if(!HF.on||E.cur!==c||c.ans||!earOn()){hfLog('listen skipped: '+(!HF.on?'hands-free off':E.cur!==c?'question changed':c.ans?'already answered':'Ear tab not visible'));return}
   // wait for the previous session to close and for the spoken feedback to finish
-  if((HF.live||(window.speechSynthesis&&speechSynthesis.speaking))&&tries<20){HF.timer=setTimeout(()=>hfListen(c,tries+1),250);return}
+  if((HF.live||(window.speechSynthesis&&speechSynthesis.speaking))&&tries<20){if(!tries)hfLog('waiting: '+(HF.live?'previous session still open':'voice still speaking'));HF.timer=setTimeout(()=>hfListen(c,tries+1),250);return}
+  if(tries>=20)hfLog('gave up waiting ('+(HF.live?'session':'speech')+'), starting anyway');
   HF.live=null;
   let r;try{r=new SR()}catch(e){hfFail("Voice answers aren't supported in this browser.");return}
-  HF.rec=r;HF.live=r;r.lang=/^en/i.test(navigator.language)?navigator.language:'en-US';r.interimResults=true;r.maxAlternatives=5;r.continuous=false;
+  HF.n=(HF.n||0)+1;r.n=HF.n;HF.rec=r;HF.live=r;r.lang=/^en/i.test(navigator.language)?navigator.language:'en-US';r.interimResults=true;r.maxAlternatives=5;r.continuous=false;
   let heard=false,last=null;
   const judge=alts=>{
     const pool=earPool().map(o=>o.a);
@@ -677,31 +685,33 @@ function hfListen(c,tries){tries=tries||0;
     HF.hold=true;voiceMsg('Heard: <q>'+esc(alts[0])+'</q>. That isn\'t one of the choices. Try again: '+earPool().map(o=>o.l).join(', ')+'.',true)};
   r.onresult=e=>{if(HF.rec!==r)return;if(E.cur!==c||c.ans){hfStop();return}
     const res=e.results[e.results.length-1],alts=[...res].map(x=>x.transcript.trim()).filter(Boolean);
-    if(!alts.length)return;heard=true;
+    if(!alts.length)return;heard=true;hfLog('#'+r.n+' '+(res.isFinal?'FINAL':'partial')+': "'+alts.join('" / "')+'"');
     if(!res.isFinal){last=alts;HF.hold=false;voiceMsg('Heard: <q>'+esc(alts[0])+'</q>');return}
     last=null;judge(alts)};
-  r.onerror=e=>{if(HF.rec!==r)return;
+  r.onerror=e=>{hfLog('#'+r.n+' error: '+e.error+(HF.rec!==r?' (old session)':''));if(HF.rec!==r)return;
     if(e.error==='not-allowed'||e.error==='service-not-allowed')hfFail("The microphone is blocked. Allow it for this site (the icon in the address bar), then turn Hands-free back on.");
     else if(e.error==='audio-capture')hfFail('No microphone was found.');
     else if(e.error==='network')hfFail('Voice recognition needs an internet connection.')};
-  r.onend=()=>{if(HF.live===r)HF.live=null;if(HF.rec!==r)return;HF.rec=null;
-    if(!HF.on||E.cur!==c||c.ans||!earOn())return;
+  r.onend=()=>{hfLog('#'+r.n+' ended'+(heard?'':' (heard nothing)')+(HF.rec!==r?' (old session)':''));if(HF.live===r)HF.live=null;if(HF.rec!==r)return;HF.rec=null;
+    if(!HF.on||E.cur!==c||c.ans||!earOn()){hfLog('not restarting: '+(!HF.on?'hands-free off':E.cur!==c?'question changed':c.ans?'answered':'Ear tab not visible'));return}
     // Android sometimes ends without marking the result final; use what it heard
-    if(last){const l=last;last=null;judge(l);if(c.ans||E.cur!==c||!HF.on)return}
-    if(!heard&&performance.now()>HF.until){hfPaused();return}
+    if(last){hfLog('using last partial result');const l=last;last=null;judge(l);if(c.ans||E.cur!==c||!HF.on)return}
+    if(!heard&&performance.now()>HF.until){hfLog('paused after 60s');hfPaused();return}
     // the mic closes after a few quiet seconds (quickly on Android); say so until it reopens
     if(!HF.hold)voiceMsg('🎤 One moment…');
     HF.timer=setTimeout(()=>hfListen(c),100)};
-  r.onstart=()=>{if(HF.rec===r&&!HF.hold)voiceMsg('🎤 Listening. Say your answer.')};
+  r.onaudiostart=()=>hfLog('#'+r.n+' mic open');r.onspeechstart=()=>hfLog('#'+r.n+' speech detected');
+  r.onstart=()=>{hfLog('#'+r.n+' started');if(HF.rec===r&&!HF.hold)voiceMsg('🎤 Listening. Say your answer.')};
+  hfLog('#'+r.n+' start ('+r.lang+')');
   try{r.start()}
-  catch(e){HF.rec=null;HF.live=null;if(tries<25)HF.timer=setTimeout(()=>hfListen(c,tries+5),500);else hfPaused()}
+  catch(e){hfLog('#'+r.n+' start FAILED: '+(e.name||'')+' '+(e.message||e));HF.rec=null;HF.live=null;if(tries<25)HF.timer=setTimeout(()=>hfListen(c,tries+5),500);else hfPaused()}
 }
 function hfPaused(){voiceMsg('Stopped listening. <button class="ghost" id="hfAgain">Listen again</button> or just tap your answer.')}
 $('#earVoice').addEventListener('click',e=>{if(!e.target.closest('#hfAgain'))return;const c=E.cur;
   if(HF.on&&c&&!c.ans&&c.t!=='echo'){HF.until=performance.now()+HF_WAIT;HF.hold=false;hfListen(c)}});
-function hfAfter(c,ok){hfStop();
+function hfAfter(c,ok){hfLog('judged: '+(ok?'right':'wrong'));hfStop();
   say((ok?'Yes! ':'No, it was ')+sayLabel(c,ok)+'.',()=>{
-    HF.adv=setTimeout(()=>{if(HF.on&&E.cur===c&&earOn())earNew()},ok?600:1400)})}
+    hfLog('feedback spoken');HF.adv=setTimeout(()=>{if(HF.on&&E.cur===c&&earOn())earNew();else hfLog('no auto-advance: '+(!HF.on?'hands-free off':E.cur!==c?'question changed':'Ear tab not visible'))},ok?600:1400)})}
 $('#earHf').onchange=async e=>{
   if(!e.target.checked){hfSet(false);voiceMsg('');return}
   if(!SR){hfFail("This browser can't do voice answers. Try Chrome, Edge or Safari.");return}
@@ -716,7 +726,11 @@ $('#earRep').addEventListener('click',hfSchedule);
 $('#earType').addEventListener('click',()=>{hfStop();clearTimeout(HF.adv);voiceMsg('')});
 $('#earLvl').addEventListener('click',()=>{hfStop();clearTimeout(HF.adv)});
 $('#tabs').addEventListener('click',()=>{if(!earOn()){hfStop();clearTimeout(HF.adv)}});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)hfStop()});
+document.addEventListener('visibilitychange',()=>{hfLog('page '+(document.hidden?'hidden':'visible'));if(document.hidden)hfStop()});
+$('#hfLogBox').addEventListener('toggle',()=>{$('#hfLog').textContent=HFL.join('\n')});
+$('#hfCopy').onclick=async()=>{const t='Woodshed voice log\n'+navigator.userAgent+'\nlang '+navigator.language+'\n'+HFL.join('\n');
+  try{await navigator.clipboard.writeText(t);$('#hfCopy').textContent='Copied'}catch(e){const r=document.createRange();r.selectNodeContents($('#hfLog'));getSelection().removeAllRanges();getSelection().addRange(r);$('#hfCopy').textContent='Selected, now copy'}
+  setTimeout(()=>{$('#hfCopy').textContent='Copy log'},2000)};
 try{HF.on=!!SR&&localStorage.getItem(HF_KEY)==='1'}catch(e){}
 /* ---------- fretboard ---------- */
 let F={cur:null,t0:0,prev:null,listen:false,show:null};
