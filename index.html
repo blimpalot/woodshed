@@ -623,14 +623,14 @@ function sayLabel(c,ok){
   if(c.t==='deg')return'the '+DEGL[c.n].replace('♭','flat ').replace('♯','sharp ').replace(/\d/,d=>NUMSAY[d]);
   if(c.t==='int')return(ok?'':c.n===12?'an ':'a ')+INT_LONG[c.n].toLowerCase();
   return CH_SAY[c.s]}
-// browsers ship a mix of robotic and natural voices; pick the most natural English one unless you chose one
+// browsers ship a mix of robotic and natural voices; pick the most natural British English one unless you chose one
 const VOICE_KEY='woodshed-voice';
 const NOVELTY=/albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|eddy|flo\b|fred|good news|grandma|grandpa|hysterical|jester|junior|kathy|organ|ralph|reed|rocko|sandy|shelley|superstar|trinoids|whisper|wobble|zarvox/i;
 function voiceScore(v){const n=v.name;if(NOVELTY.test(n))return -100;let sc=0;
   if(/natural|neural/i.test(n))sc+=60;if(/online/i.test(n))sc+=15;if(/premium/i.test(n))sc+=50;if(/enhanced/i.test(n))sc+=45;
   if(/siri/i.test(n))sc+=40;if(/google/i.test(n))sc+=25;
   if(/\b(ava|samantha|aria|jenny|guy|zoe|evan|allison|serena|daniel|karen|moira|emma|brian|andrew)\b/i.test(n))sc+=10;
-  if(/^en[-_]US/i.test(v.lang))sc+=5;return sc}
+  if(/^en[-_]GB/i.test(v.lang))sc+=30;return sc}
 function enVoices(){return window.speechSynthesis?speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang)).sort((a,b)=>voiceScore(b)-voiceScore(a)):[]}
 function pickVoice(){const vs=enVoices();let id='';try{id=localStorage.getItem(VOICE_KEY)||''}catch(e){}
   return vs.find(v=>v.voiceURI===id)||vs[0]||null}
@@ -658,7 +658,7 @@ function hfSchedule(){hfStop();clearTimeout(HF.adv);const c=E.cur;
 function hfListen(c){
   hfStop();if(!HF.on||E.cur!==c||c.ans||!earOn())return;
   let r;try{r=new SR()}catch(e){hfFail("Voice answers aren't supported in this browser.");return}
-  HF.rec=r;r.lang='en-US';r.interimResults=true;r.maxAlternatives=5;r.continuous=false;
+  HF.rec=r;r.lang=/^en/i.test(navigator.language)?navigator.language:'en-US';r.interimResults=true;r.maxAlternatives=5;r.continuous=false;
   let heard=false;
   r.onresult=e=>{if(HF.rec!==r)return;if(E.cur!==c||c.ans){hfStop();return}
     const res=e.results[e.results.length-1],alts=[...res].map(x=>x.transcript.trim()).filter(Boolean);
