@@ -71,7 +71,11 @@ ol.blocks li.done::before{color:var(--accent)}
 .grid button.no{background:var(--bad);color:#fff;border-color:transparent}
 .fbk{min-height:3.2em;font-size:17px;margin:4px 0}
 .fbk.ok{color:var(--good)}.fbk.no{color:var(--bad)}
-#earVoice{margin:0;min-height:1.4em}#earVoice:empty{display:none}#earVoice.no{color:var(--bad)}#hfLogBox{margin:6px 0}#hfLogBox pre{white-space:pre-wrap;font-size:12px;max-height:40vh;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px}#hfLogBox button{padding:4px 10px;font-size:14px;margin:6px 0}
+#earVoice{margin:0;min-height:1.4em}#earVoice:empty{display:none}#earVoice.no{color:var(--bad)}.drill{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:12px 14px;margin:6px 0 16px}
+.drill .dh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:19px}.drill .dh span{font-size:14px;color:var(--muted)}
+.drill .small{margin:4px 0 8px}.drill .line{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.dbar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}.dbar span{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+#hfLogBox{margin:6px 0}#hfLogBox pre{white-space:pre-wrap;font-size:12px;max-height:40vh;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px}#hfLogBox button{padding:4px 10px;font-size:14px;margin:6px 0}
 #earVoice button{padding:4px 10px;font-size:14px;margin:0 4px}#earVoice q{color:var(--ink);font-weight:600}
 .board{display:flex;justify-content:center;margin:10px 0 4px}
 .board svg{max-width:100%;height:auto;display:block}
@@ -171,6 +175,9 @@ label.wide input{width:100%}
 <section id="v-ear" class="view">
   <h2>Ear</h2>
   <p class="lede">Hear it, name it. Sing each note before you tap. Once you know the key, a degree number tells you the note name.</p>
+  <div class="drill"><div class="dh"><b>Daily drill</b><span>8 min · 5 sets · hands-free</span></div>
+    <p class="small" id="drInfo"></p><div class="dbar"><span id="drBar"></span></div>
+    <div class="line"><button class="btn" id="drGo">Start daily drill</button><button class="ghost" id="drEnd">End drill</button></div></div>
   <div>
     <div class="seg" id="earType"><button data-v="deg">Degrees</button><button data-v="int">Intervals</button><button data-v="chord">Chords</button><button data-v="echo">Echo</button></div>
     <div class="seg" id="earLvl"><button data-v="1">Easy</button><button data-v="2">Medium</button><button data-v="3">Full</button></div>
@@ -450,6 +457,7 @@ function rEar(){
   $('#earSlow').style.display=t==='echo'?'':'none';
   $('#earMic').style.display=t==='echo'&&!MIC.blocked?'':'none';
   $('#earHfRow').style.display=t==='echo'?'none':'';$('#earVoiceRow').style.display=$('#hfLogBox').style.display=t==='echo'||!HF.on?'none':'';if(HF.on)fillVoices();$('#earHf').checked=HF.on;
+  if(typeof rDrill==='function')rDrill();
   $('#earNew').textContent=t==='echo'?'New phrase':t==='chord'?'New chord':'New note';
   $('#earAns').style.gridTemplateColumns=t==='echo'?'repeat(3,1fr)':'';
   $('#earAns').innerHTML=earPool().map(o=>`<button data-a="${o.a}">${o.l}</button>`).join('');
@@ -551,14 +559,14 @@ $('#earAns').addEventListener('click',e=>{
 function earAnswer(a){
   const c=E.cur,fb=$('#earFb');if(!c||c.ans)return;
   const ok=a===c.s,ms=Math.max(0,performance.now()-E.t0);c.ans=true;
-  S.earStats.push({t:c.t,ok,ms});S.earStats=S.earStats.slice(-150);save();
+  S.earStats.push({t:c.t,ok,ms});S.earStats=S.earStats.slice(-150);save();drillRec(c,ok,ms);
   let msg;
   if(c.t==='deg'){msg=`${ok?'Yes.':'It was '+DEGL[c.n]+'.'} ${DEGL[c.n]} in ${KN[c.k]} is ${pcName(c.root+c.n,c.k)}.`;if(!ok)pluck(c.m,0,1.4,.3)}
   else if(c.t==='int'){msg=`${ok?'Yes.':'It was a '+INT_LONG[c.n].toLowerCase()+'.'} ${INT_LONG[c.n]}. ${shape(c.n)}`;if(!ok){pluck(c.lo,0,1.2,.28);pluck(c.lo+c.n,.7,1.2,.28)}}
   else{const q=CHQ[c.s];msg=`${ok?'Yes.':'It was '+q.n.toLowerCase()+'.'} ${q.n} is ${q.f}. ${q.d}`;if(!ok)chord(q.iv.map(x=>c.r+x),0,1.6)}
   rEar();fb.className='fbk '+(ok?'ok':'no');fb.textContent=msg;
   document.querySelectorAll('#earAns button').forEach(x=>{if(x.dataset.a===c.s)x.classList.add('ok');else if(x.dataset.a===a)x.classList.add('no')});
-  if(HF.on)hfAfter(c,ok);else if(ok)setTimeout(()=>{if(E.cur===c)earNew()},1500);
+  if(D.on&&c.drill)drillAfter(c,ok,ms);else if(HF.on)hfAfter(c,ok);else if(ok)setTimeout(()=>{if(E.cur===c)earNew()},1500);
 }
 $('#earType').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.ear.type=b.dataset.v;E.cur=null;save();rEar();$('#earFb').className='fbk';$('#earFb').textContent='Tap the button above to start.'};
 $('#earLvl').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.ear.level=+b.dataset.v;E.cur=null;save();rEar()};
@@ -620,6 +628,10 @@ function voiceMatch(text,t,pool){const toks=vTokens(text);
   for(let i=c.length-1;i>=0;i--)if(pool.includes(c[i]))return c[i];
   return null}
 function vCmd(s){s=String(s).toLowerCase();
+  if(/\bnext set\b/.test(s))return'nextset';
+  if(/\b(resume|continue|unpause|keep going|carry on|i'?m ready)\b/.test(s))return'resume';
+  if(/\b(pause|hold on)\b/.test(s))return'pause';
+  if(/\b(end (the )?drill|finish|quit)\b/.test(s))return'end';
   if(/\b(repeat|again|replay|one more time)\b/.test(s))return'rep';
   if(/\b(next|skip|pass)\b/.test(s))return'next';
   if(/\bstop\b/.test(s))return'stop';
@@ -676,9 +688,12 @@ function hfListen(c,tries){tries=tries||0;
   HF.n=(HF.n||0)+1;r.n=HF.n;HF.rec=r;HF.live=r;r.lang=/^en/i.test(navigator.language)?navigator.language:'en-US';r.interimResults=true;r.maxAlternatives=5;r.continuous=false;
   let heard=false,last=null;
   const judge=alts=>{
+    if(D.on&&D.paused){if(vCmd(alts[0])==='resume'){voiceMsg('Heard: <q>'+esc(alts[0])+'</q>. Resuming.');drillResume()}
+      else{HF.hold=true;voiceMsg('Paused. Say "resume" or tap Resume.')}return}
     const pool=earPool().map(o=>o.a);
     for(const t of alts){const a=voiceMatch(t,c.t,pool);if(a){voiceMsg('Heard: <q>'+esc(t)+'</q>');earAnswer(a);return}}
     const cmd=vCmd(alts[0]);
+    if(D.on&&drillCmd(cmd)){hfLog('drill command: '+cmd);return}
     if(cmd==='rep'){voiceMsg('Heard: <q>'+esc(alts[0])+'</q>. Playing it again.');earPlay();hfSchedule();return}
     if(cmd==='next'){voiceMsg('Heard: <q>'+esc(alts[0])+'</q>. Skipping.');earNew();return}
     if(cmd==='stop'){hfSet(false);voiceMsg('Hands-free is off. Tap your answers.');return}
@@ -695,11 +710,13 @@ function hfListen(c,tries){tries=tries||0;
   r.onend=()=>{hfLog('#'+r.n+' ended'+(heard?'':' (heard nothing)')+(HF.rec!==r?' (old session)':''));if(HF.live===r)HF.live=null;if(HF.rec!==r)return;HF.rec=null;
     if(!HF.on||E.cur!==c||c.ans||!earOn()){hfLog('not restarting: '+(!HF.on?'hands-free off':E.cur!==c?'question changed':c.ans?'answered':'Ear tab not visible'));return}
     // Android sometimes ends without marking the result final; use what it heard
-    if(last){hfLog('using last partial result');const l=last;last=null;judge(l);if(c.ans||E.cur!==c||!HF.on)return}
+    if(last){hfLog('using last partial result');const l=last;last=null;judge(l);
+      // judging may have moved on or scheduled its own listen (e.g. "repeat"); don't start a second one
+      if(c.ans||E.cur!==c||!HF.on||HF.timer||HF.rec)return}
     if(!heard&&performance.now()>HF.until){hfLog('paused after 60s');hfPaused();return}
     // the mic closes after a few quiet seconds (quickly on Android); say so until it reopens
     if(!HF.hold)voiceMsg('🎤 One moment…');
-    HF.timer=setTimeout(()=>hfListen(c),100)};
+    clearTimeout(HF.timer);HF.timer=setTimeout(()=>hfListen(c),100)};
   r.onaudiostart=()=>hfLog('#'+r.n+' mic open');r.onspeechstart=()=>hfLog('#'+r.n+' speech detected');
   r.onstart=()=>{hfLog('#'+r.n+' started');if(HF.rec===r&&!HF.hold)voiceMsg('🎤 Listening. Say your answer.')};
   hfLog('#'+r.n+' start ('+r.lang+')');
@@ -712,14 +729,17 @@ $('#earVoice').addEventListener('click',e=>{if(!e.target.closest('#hfAgain'))ret
 function hfAfter(c,ok){hfLog('judged: '+(ok?'right':'wrong'));hfStop();
   say((ok?'Yes! ':'No, it was ')+sayLabel(c,ok)+'.',()=>{
     hfLog('feedback spoken');HF.adv=setTimeout(()=>{if(HF.on&&E.cur===c&&earOn())earNew();else hfLog('no auto-advance: '+(!HF.on?'hands-free off':E.cur!==c?'question changed':'Ear tab not visible'))},ok?600:1400)})}
-$('#earHf').onchange=async e=>{
-  if(!e.target.checked){hfSet(false);voiceMsg('');return}
-  if(!SR){hfFail("This browser can't do voice answers. Try Chrome, Edge or Safari.");return}
+async function hfEnable(){
+  if(!SR){hfFail("This browser can't do voice answers. Try Chrome, Edge or Safari.");return false}
   // ask for the mic now, while we still have your tap, so the browser can prompt
   if(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia){
     try{const st=await navigator.mediaDevices.getUserMedia({audio:true});st.getTracks().forEach(t=>t.stop())}
-    catch(err){hfFail("The microphone is blocked. Allow it for this site (the icon in the address bar), then turn Hands-free back on.");return}}
-  hfSet(true);say('Hands-free on.');
+    catch(err){hfFail("The microphone is blocked. Allow it for this site (the icon in the address bar), then turn Hands-free back on.");return false}}
+  hfSet(true);return true}
+$('#earHf').onchange=async e=>{
+  if(!e.target.checked){hfSet(false);voiceMsg('');return}
+  if(!await hfEnable())return;
+  if(D.on)return;say('Hands-free on.');
   const c=E.cur;if(c&&!c.ans&&c.t!=='echo')hfSchedule();
   else voiceMsg('Hands-free is on. Tap '+$('#earNew').textContent+' to start. Say "repeat", "skip" or "stop" any time.')};
 $('#earRep').addEventListener('click',hfSchedule);
@@ -732,6 +752,114 @@ $('#hfCopy').onclick=async()=>{const t='Woodshed voice log\n'+navigator.userAgen
   try{await navigator.clipboard.writeText(t);$('#hfCopy').textContent='Copied'}catch(e){const r=document.createRange();r.selectNodeContents($('#hfLog'));getSelection().removeAllRanges();getSelection().addRange(r);$('#hfCopy').textContent='Selected, now copy'}
   setTimeout(()=>{$('#hfCopy').textContent='Copy log'},2000)};
 try{HF.on=!!SR&&localStorage.getItem(HF_KEY)==='1'}catch(e){}
+/* ---------- daily drill: sets and reps, run hands-free ---------- */
+// kept in its own storage slot, like the hands-free setting, so the main save format is untouched
+const DRILL_KEY='woodshed-drill';
+function dFresh(){return{lv:{deg:1,int:1,chord:1},items:{},last:null}}
+function dLoad(){try{const d=JSON.parse(localStorage.getItem(DRILL_KEY)||'null');if(d)return Object.assign(dFresh(),d)}catch(e){}return dFresh()}
+let DS=dLoad();
+function dSave(){try{localStorage.setItem(DRILL_KEY,JSON.stringify(DS))}catch(e){}}
+const LVN={1:'easy',2:'medium',3:'full'};
+const POOLS={deg:DEG_POOLS,int:INT_POOLS,chord:CH_POOLS};
+const TNAME={deg:'Degrees',int:'Intervals',chord:'Chords'};
+var D={on:false,paused:false};
+// per-answer history for weak spots: r = recent miss rate, s = recent seconds to answer when right
+function drillRec(c,ok,ms){if(c.t==='echo')return;const k=c.t+':'+c.s,it=DS.items[k];
+  if(!it)DS.items[k]={r:ok?0:1,s:ok?ms/1000:0,n:1};
+  else{it.r=it.r*.7+(ok?0:.3);if(ok)it.s=it.s?it.s*.7+ms/1000*.3:ms/1000;it.n++}
+  dSave()}
+function weakItems(n){
+  const sc=([k,it])=>it.r*2+Math.max(0,(it.s-4)/4);
+  const top=Object.entries(DS.items).filter(e=>sc(e)>.25).sort((a,b)=>sc(b)-sc(a)).slice(0,3).map(e=>e[0]);
+  const out=[];for(let i=0;out.length<n&&top.length;i++)out.push(top[i%top.length]);
+  // not enough history yet: a mixed review at your current levels
+  while(out.length<n){const t=pick(['deg','int','chord']);out.push(t+':'+pick(POOLS[t][DS.lv[t]]))}
+  return out.sort(()=>Math.random()-.5)}
+function drillPlan(){const L=DS.lv;return[
+  {name:'Warm-up',t:'deg',L:1,n:8},
+  {name:'Degrees',t:'deg',L:L.deg,n:10,lvl:true},
+  {name:'Intervals',t:'int',L:L.int,n:10,lvl:true},
+  {name:'Chords',t:'chord',L:L.chord,n:8,lvl:true},
+  {name:'Weak spots',t:'weak',n:6}]}
+const NUMW=['zero','one','two','three','four','five','six','seven','eight','nine','ten'];
+function drillQ(t,L,forced){
+  S.ear.type=t;S.ear.level=L;const k=+$('#earKey').value,P=POOLS[t][L];
+  let a=forced;if(a===undefined){const opts=P.filter(x=>String(x)!==D.lastA);a=pick(opts.length?opts:P)}
+  D.lastA=String(a);
+  if(t==='deg'){const s=+a,root=48+k;E.cur={t,s:String(s),n:s,k,root,m:root+s+(Math.random()<.35?12:0)};E.t0=performance.now()+3200}
+  else if(t==='int'){const s=+a;E.cur={t,s:String(s),n:s,lo:45+Math.floor(Math.random()*12)};E.t0=performance.now()+800}
+  else{E.cur={t,s:String(a),r:48+Math.floor(Math.random()*12)};E.t0=performance.now()+1000}
+  E.cur.ans=false;E.cur.drill=true;earPlay();rEar();
+  const fb=$('#earFb');fb.className='fbk';fb.textContent=HF.on?'Sing it, then say it.':'Sing it, then tap it.';
+  hfSchedule()}
+function drillStep(){clearTimeout(D.adv);if(!D.on||D.paused)return;
+  if(!earOn()){drillPause();return}
+  const set=D.sets[D.si];if(D.ri>=set.n){drillSetEnd();return}
+  D.ri++;
+  if(set.t==='weak'){const [t,a]=D.q[D.ri-1].split(':'),L=[1,2,3].find(l=>POOLS[t][l].map(String).includes(a))||3;drillQ(t,L,a)}
+  else drillQ(set.t,set.L);
+  rDrill()}
+function drillSetIntro(prefix){const set=D.sets[D.si];D.ri=0;D.sr=0;D.sn=0;D.sms=[];
+  if(set.t==='weak')D.q=weakItems(set.n);
+  const txt=(prefix||'')+`Set ${D.si+1} of ${D.sets.length}. ${set.name}${set.L&&set.t!=='weak'&&set.name!=='Warm-up'?', '+LVN[set.L]:set.name==='Warm-up'?'. Degrees, easy':''}. ${(NUMW[set.n]||String(set.n)).replace(/^./,x=>x.toUpperCase())} reps.`;
+  voiceMsg(esc(txt));rDrill();hfStop();
+  say(txt,()=>{if(D.on&&!D.paused)D.adv=setTimeout(drillStep,700)})}
+function drillSetEnd(){const set=D.sets[D.si];let note='';
+  if(set.lvl&&D.sn>=Math.ceil(set.n/2)){const acc=D.sr/D.sn,avg=D.sms.length?D.sms.reduce((a,b)=>a+b,0)/D.sms.length:1e9;
+    if(acc>=.9&&avg<4000&&set.L<3){DS.lv[set.t]=set.L+1;note=`${set.name} moves up to ${LVN[set.L+1]} next time. `;D.changes.push(`${set.name} up to ${LVN[set.L+1]}`)}
+    else if(acc<.6&&set.L>1){DS.lv[set.t]=set.L-1;note=`${set.name} goes back to ${LVN[set.L-1]} next time. `;D.changes.push(`${set.name} back to ${LVN[set.L-1]}`)}
+    dSave()}
+  D.si++;const pre=`${D.sr} of ${D.sn}. ${note}`;
+  if(D.si>=D.sets.length)drillFinish(pre);else drillSetIntro(pre)}
+function drillRestore(){if(D.prev){S.ear.type=D.prev.type;S.ear.level=D.prev.level;save()}}
+function drillFinish(pre){D.on=false;hfStop();clearTimeout(D.adv);
+  DS.last={d:today(),r:D.right,t:D.total,ch:D.changes};dSave();
+  const i=blocks().findIndex(b=>b.go==='ear');if(i>=0)setDone(i,true);
+  drillRestore();E.cur=null;rEar();rDrill();
+  const txt=(pre||'')+`Drill done. ${D.right} of ${D.total} right today. See you tomorrow.`;
+  voiceMsg(esc(txt));$('#earFb').className='fbk ok';$('#earFb').textContent=`Drill done: ${D.right}/${D.total}. Today's ear block is ticked off.`;say(txt)}
+function drillEnd(){if(!D.on)return;D.on=false;D.paused=false;hfStop();clearTimeout(D.adv);clearTimeout(HF.adv);
+  drillRestore();E.cur=null;rEar();rDrill();voiceMsg('');
+  $('#earFb').className='fbk';$('#earFb').textContent=`Drill ended early: ${D.right}/${D.total} right. Start again any time.`;say('Drill ended.')}
+function drillPause(){if(!D.on||D.paused)return;D.paused=true;clearTimeout(D.adv);clearTimeout(HF.adv);rDrill();
+  const c=E.cur;hfStop();
+  voiceMsg('Paused. Say "resume" or tap Resume.');
+  // keep listening for "resume" (the spoken word "paused" isn't a command, so it can't trigger itself)
+  if(earOn())say('Paused.',()=>{if(D.on&&D.paused&&HF.on&&c&&!c.ans){HF.until=performance.now()+HF_WAIT;hfListen(c)}})}
+function drillResume(){if(!D.on||!D.paused)return;D.paused=false;rDrill();const c=E.cur;
+  if(c&&!c.ans){voiceMsg('');earPlay();hfSchedule()}else drillStep()}
+async function drillStart(){if(D.on)return;A();
+  if(SR&&!HF.on)await hfEnable();
+  D={on:true,paused:false,sets:drillPlan(),si:0,ri:0,right:0,total:0,changes:[],prev:{type:S.ear.type,level:S.ear.level},adv:null};
+  if(S.ear.type==='echo')S.ear.type='deg';
+  rEar();drillSetIntro(HF.on?'Daily drill. Five sets, about eight minutes. Answer out loud. ':'Daily drill. Voice is off, so tap your answers. ')}
+// called by earAnswer during a drill
+function drillAfter(c,ok,ms){D.total++;D.sn++;if(ok){D.right++;D.sr++;D.sms.push(ms)}rDrill();
+  const next=()=>{D.adv=setTimeout(drillStep,ok?400:1200)};
+  if(HF.on){hfLog('judged: '+(ok?'right':'wrong'));hfStop();say(ok?'Yes.':'No, '+sayLabel(c,false)+'.',next)}
+  else D.adv=setTimeout(drillStep,ok?900:2200)}
+function drillCmd(cmd){
+  if(cmd==='pause'){drillPause();return true}
+  if(cmd==='nextset'){const c=E.cur;if(c)c.ans=true;hfStop();D.ri=D.sets[D.si].n;voiceMsg('Next set.');drillSetEnd();return true}
+  if(cmd==='next'){const c=E.cur;if(c)c.ans=true;hfStop();voiceMsg('Skipped.');drillStep();return true}
+  if(cmd==='stop'||cmd==='end'){drillEnd();return true}
+  return false}
+function rDrill(){const tot=D.on?D.sets.reduce((a,s)=>a+s.n,0):0;
+  $('#drGo').textContent=!D.on?'Start daily drill':D.paused?'Resume':'Pause';
+  $('#drEnd').style.display=D.on?'':'none';
+  ['#earType','#earLvl','#earNew'].forEach(x=>{$(x).style.display=D.on?'none':''});
+  if(D.on){const set=D.sets[D.si]||D.sets[D.sets.length-1],done=D.sets.slice(0,D.si).reduce((a,s)=>a+s.n,0)+D.ri;
+    $('#drInfo').textContent=`Set ${Math.min(D.si+1,D.sets.length)} of ${D.sets.length}: ${set.name}${set.lvl?' ('+LVN[set.L]+')':''} · rep ${D.ri} of ${set.n} · ${D.right}/${D.total} right${D.paused?' · paused':''}`;
+    $('#drBar').style.width=Math.round(done/tot*100)+'%';return}
+  $('#drBar').style.width=DS.last&&DS.last.d===today()?'100%':'0';
+  const L=DS.lv;
+  $('#drInfo').innerHTML=DS.last&&DS.last.d===today()
+    ?`Done today: <b>${DS.last.r}/${DS.last.t}</b> ✓${DS.last.ch&&DS.last.ch.length?' · '+esc(DS.last.ch.join(', ')):''}. Run it again any time.`
+    :`Warm-up · Degrees (${LVN[L.deg]}) · Intervals (${LVN[L.int]}) · Chords (${LVN[L.chord]}) · Weak spots. Levels adjust as you improve. Say "pause", "repeat", "skip" or "next set" any time.`}
+$('#drGo').onclick=()=>{if(!D.on)drillStart();else if(D.paused)drillResume();else drillPause()};
+$('#drEnd').onclick=drillEnd;
+$('#earType').addEventListener('click',drillEnd);$('#earLvl').addEventListener('click',drillEnd);
+$('#tabs').addEventListener('click',()=>{if(D.on&&!earOn()){drillPause()}});
 /* ---------- fretboard ---------- */
 let F={cur:null,t0:0,prev:null,listen:false,show:null};
 function fbStrings(){const o=INST[S.inst].open;if(S.fb.string==='all')return o.map((_,i)=>i);if(S.fb.string==='week')return[focus().str];return[+S.fb.string]}
