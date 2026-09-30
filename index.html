@@ -564,7 +564,8 @@ $('#earNew').onclick=()=>{micStop();earNew()};$('#earMic').onclick=micStart;$('#
 $('#earDrone').onclick=()=>drone?stopDrone():startDrone(+$('#earKey').value);
 
 /* hands-free: answer Ear quizzes by voice (Web Speech API) */
-var HF={hold:false,on:false,rec:null,timer:null,adv:null,misses:0,utt:null};
+var HF={hold:false,on:false,rec:null,timer:null,adv:null,until:0,utt:null};
+const HF_WAIT=60000; // keep listening this long for an answer before pausing
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const HF_KEY='woodshed-handsfree';
 const VW={flat:'flat',flats:'flat',flatted:'flat',flattened:'flat',flatten:'flat',flap:'flat',lowered:'flat',
@@ -656,7 +657,7 @@ function hfFail(msg){hfSet(false);voiceMsg(msg+' Tapping still works.',true)}
 // listen once the question's sound has finished, so the app doesn't hear itself
 function hfSchedule(){hfStop();clearTimeout(HF.adv);const c=E.cur;
   if(!HF.on||!c||c.t==='echo'||c.ans)return;
-  HF.misses=0;HF.hold=false;voiceMsg('Listen…');
+  HF.until=performance.now()+HF_WAIT;HF.hold=false;voiceMsg('Listen…');
   HF.timer=setTimeout(()=>hfListen(c),({deg:3200,int:800,chord:1000}[c.t]||0)+900)}
 function hfListen(c,tries){tries=tries||0;
   hfStop();if(!HF.on||E.cur!==c||c.ans||!earOn())return;
@@ -687,14 +688,17 @@ function hfListen(c,tries){tries=tries||0;
     if(!HF.on||E.cur!==c||c.ans||!earOn())return;
     // Android sometimes ends without marking the result final; use what it heard
     if(last){const l=last;last=null;judge(l);if(c.ans||E.cur!==c||!HF.on)return}
-    if(!heard&&++HF.misses>=6){hfPaused();return}
-    HF.timer=setTimeout(()=>hfListen(c),300)};
-  try{r.start();if(!HF.hold)voiceMsg('🎤 Listening. Say your answer.')}
+    if(!heard&&performance.now()>HF.until){hfPaused();return}
+    // the mic closes after a few quiet seconds (quickly on Android); say so until it reopens
+    if(!HF.hold)voiceMsg('🎤 One moment…');
+    HF.timer=setTimeout(()=>hfListen(c),100)};
+  r.onstart=()=>{if(HF.rec===r&&!HF.hold)voiceMsg('🎤 Listening. Say your answer.')};
+  try{r.start()}
   catch(e){HF.rec=null;HF.live=null;if(tries<25)HF.timer=setTimeout(()=>hfListen(c,tries+5),500);else hfPaused()}
 }
 function hfPaused(){voiceMsg('Stopped listening. <button class="ghost" id="hfAgain">Listen again</button> or just tap your answer.')}
 $('#earVoice').addEventListener('click',e=>{if(!e.target.closest('#hfAgain'))return;const c=E.cur;
-  if(HF.on&&c&&!c.ans&&c.t!=='echo'){HF.misses=0;HF.hold=false;hfListen(c)}});
+  if(HF.on&&c&&!c.ans&&c.t!=='echo'){HF.until=performance.now()+HF_WAIT;HF.hold=false;hfListen(c)}});
 function hfAfter(c,ok){hfStop();
   say((ok?'Yes! ':'No, it was ')+sayLabel(c,ok)+'.',()=>{
     HF.adv=setTimeout(()=>{if(HF.on&&E.cur===c&&earOn())earNew()},ok?600:1400)})}
