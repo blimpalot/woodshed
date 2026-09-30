@@ -183,6 +183,7 @@ label.wide input{width:100%}
     <button class="ghost" id="earDrone">Start drone</button>
   </div>
   <label class="check" id="earHfRow"><input type="checkbox" id="earHf"> Hands-free: say your answer out loud</label>
+  <div class="row" id="earVoiceRow"><label class="sel">Voice <select id="earVoicePick"></select></label></div>
   <div class="grid" id="earAns"></div>
   <p class="small" id="earVoice" aria-live="polite"></p>
   <p class="fbk" id="earFb">Tap New note. You'll hear the key, then a note.</p>
@@ -446,7 +447,7 @@ function rEar(){
   $('#earKeyRow').style.display=(t==='deg'||t==='echo')?'flex':'none';
   $('#earSlow').style.display=t==='echo'?'':'none';
   $('#earMic').style.display=t==='echo'&&!MIC.blocked?'':'none';
-  $('#earHfRow').style.display=t==='echo'?'none':'';$('#earHf').checked=HF.on;
+  $('#earHfRow').style.display=t==='echo'?'none':'';$('#earVoiceRow').style.display=t==='echo'||!HF.on?'none':'';if(HF.on)fillVoices();$('#earHf').checked=HF.on;
   $('#earNew').textContent=t==='echo'?'New phrase':t==='chord'?'New chord':'New note';
   $('#earAns').style.gridTemplateColumns=t==='echo'?'repeat(3,1fr)':'';
   $('#earAns').innerHTML=earPool().map(o=>`<button data-a="${o.a}">${o.l}</button>`).join('');
@@ -622,15 +623,31 @@ function sayLabel(c,ok){
   if(c.t==='deg')return'the '+DEGL[c.n].replace('♭','flat ').replace('♯','sharp ').replace(/\d/,d=>NUMSAY[d]);
   if(c.t==='int')return(ok?'':c.n===12?'an ':'a ')+INT_LONG[c.n].toLowerCase();
   return CH_SAY[c.s]}
+// browsers ship a mix of robotic and natural voices; pick the most natural English one unless you chose one
+const VOICE_KEY='woodshed-voice';
+const NOVELTY=/albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|eddy|flo\b|fred|good news|grandma|grandpa|hysterical|jester|junior|kathy|organ|ralph|reed|rocko|sandy|shelley|superstar|trinoids|whisper|wobble|zarvox/i;
+function voiceScore(v){const n=v.name;if(NOVELTY.test(n))return -100;let sc=0;
+  if(/natural|neural/i.test(n))sc+=60;if(/online/i.test(n))sc+=15;if(/premium/i.test(n))sc+=50;if(/enhanced/i.test(n))sc+=45;
+  if(/siri/i.test(n))sc+=40;if(/google/i.test(n))sc+=25;
+  if(/\b(ava|samantha|aria|jenny|guy|zoe|evan|allison|serena|daniel|karen|moira|emma|brian|andrew)\b/i.test(n))sc+=10;
+  if(/^en[-_]US/i.test(v.lang))sc+=5;return sc}
+function enVoices(){return window.speechSynthesis?speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang)).sort((a,b)=>voiceScore(b)-voiceScore(a)):[]}
+function pickVoice(){const vs=enVoices();let id='';try{id=localStorage.getItem(VOICE_KEY)||''}catch(e){}
+  return vs.find(v=>v.voiceURI===id)||vs[0]||null}
+function fillVoices(){const sel=$('#earVoicePick'),vs=enVoices(),cur=pickVoice();if(!sel)return;
+  sel.innerHTML=vs.length?vs.map(v=>`<option value="${esc(v.voiceURI)}">${esc(v.name.replace(/^Microsoft /,''))}</option>`).join(''):'<option value="">Default voice</option>';
+  if(cur)sel.value=cur.voiceURI}
+if(window.speechSynthesis)speechSynthesis.addEventListener('voiceschanged',()=>{if(HF.on)fillVoices()});
+$('#earVoicePick').onchange=e=>{try{localStorage.setItem(VOICE_KEY,e.target.value)}catch(err){}say('Nice. That was the flat three.')};
 function say(txt,done){let fired=false;const fin=()=>{if(!fired){fired=true;if(done)done()}};
   if(window.speechSynthesis&&window.SpeechSynthesisUtterance){try{speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(txt);u.rate=1.05;u.onend=fin;u.onerror=fin;HF.utt=u;speechSynthesis.speak(u);
+    const u=new SpeechSynthesisUtterance(txt),v=pickVoice();if(v){try{u.voice=v;u.lang=v.lang}catch(e){}}u.rate=1;u.onend=fin;u.onerror=fin;HF.utt=u;speechSynthesis.speak(u);
     setTimeout(fin,3000+txt.length*70);return}catch(e){}}
   setTimeout(fin,600)}
 const earOn=()=>$('#v-ear').classList.contains('on')&&!document.hidden;
 function voiceMsg(html,bad){const el=$('#earVoice');el.className='small'+(bad?' no':'');el.innerHTML=html}
 function hfStop(){clearTimeout(HF.timer);HF.timer=null;const r=HF.rec;HF.rec=null;if(r){try{r.abort()}catch(e){}}}
-function hfSet(on){HF.on=on;$('#earHf').checked=on;try{localStorage.setItem(HF_KEY,on?'1':'')}catch(e){}
+function hfSet(on){HF.on=on;$('#earHf').checked=on;$('#earVoiceRow').style.display=on?'':'none';if(on)fillVoices();try{localStorage.setItem(HF_KEY,on?'1':'')}catch(e){}
   if(!on){hfStop();clearTimeout(HF.adv);if(window.speechSynthesis)speechSynthesis.cancel()}}
 function hfFail(msg){hfSet(false);voiceMsg(msg+' Tapping still works.',true)}
 // listen once the question's sound has finished, so the app doesn't hear itself
@@ -665,7 +682,7 @@ function hfListen(c){
   try{r.start();if(!HF.hold)voiceMsg('🎤 Listening. Say your answer.')}catch(e){HF.rec=null}
 }
 function hfAfter(c,ok){hfStop();
-  say((ok?'Yes. ':'No. It was ')+sayLabel(c,ok)+'.',()=>{
+  say((ok?'Yes! ':'No, it was ')+sayLabel(c,ok)+'.',()=>{
     HF.adv=setTimeout(()=>{if(HF.on&&E.cur===c&&earOn())earNew()},ok?600:1400)})}
 $('#earHf').onchange=async e=>{
   if(!e.target.checked){hfSet(false);voiceMsg('');return}
