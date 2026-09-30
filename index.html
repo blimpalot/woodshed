@@ -686,7 +686,7 @@ function hfListen(c,tries){tries=tries||0;
   HF.live=null;
   let r;try{r=new SR()}catch(e){hfFail("Voice answers aren't supported in this browser.");return}
   HF.n=(HF.n||0)+1;r.n=HF.n;HF.rec=r;HF.live=r;r.lang=/^en/i.test(navigator.language)?navigator.language:'en-US';r.interimResults=true;r.maxAlternatives=5;r.continuous=false;
-  let heard=false,last=null;
+  let heard=false,last=null,spoke=false;
   const judge=alts=>{
     if(D.on&&D.paused){if(vCmd(alts[0])==='resume'){voiceMsg('Heard: <q>'+esc(alts[0])+'</q>. Resuming.');drillResume()}
       else{HF.hold=true;voiceMsg('Paused. Say "resume" or tap Resume.')}return}
@@ -713,11 +713,14 @@ function hfListen(c,tries){tries=tries||0;
     if(last){hfLog('using last partial result');const l=last;last=null;judge(l);
       // judging may have moved on or scheduled its own listen (e.g. "repeat"); don't start a second one
       if(c.ans||E.cur!==c||!HF.on||HF.timer||HF.rec)return}
-    if(!heard&&performance.now()>HF.until){hfLog('paused after 60s');hfPaused();return}
+    if(spoke&&!heard){hfLog('sound but no words');HF.hold=true;
+      voiceMsg('I heard something but couldn\'t make out words. If you were singing, say the answer now. Short words help if you add "the", like "the one".',true)}
+    // in a drill, keep listening until you answer, pause or end it
+    if(!heard&&!(D.on&&c.drill)&&performance.now()>HF.until){hfLog('paused after 60s');hfPaused();return}
     // the mic closes after a few quiet seconds (quickly on Android); say so until it reopens
     if(!HF.hold)voiceMsg('🎤 One moment…');
     clearTimeout(HF.timer);HF.timer=setTimeout(()=>hfListen(c),100)};
-  r.onaudiostart=()=>hfLog('#'+r.n+' mic open');r.onspeechstart=()=>hfLog('#'+r.n+' speech detected');
+  r.onaudiostart=()=>hfLog('#'+r.n+' mic open');r.onspeechstart=()=>{spoke=true;hfLog('#'+r.n+' speech detected')};
   r.onstart=()=>{hfLog('#'+r.n+' started');if(HF.rec===r&&!HF.hold)voiceMsg('🎤 Listening. Say your answer.')};
   hfLog('#'+r.n+' start ('+r.lang+')');
   try{r.start()}
