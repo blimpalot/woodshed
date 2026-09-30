@@ -191,7 +191,8 @@ label.wide input{width:100%}
     <button class="ghost" id="earDrone">Start drone</button>
   </div>
   <label class="check" id="earHfRow"><input type="checkbox" id="earHf"> Hands-free: say your answer out loud</label>
-  <div class="row" id="earVoiceRow"><label class="sel">Voice <select id="earVoicePick"></select></label></div>
+  <div class="row" id="earVoiceRow"><label class="sel">Voice <select id="earVoicePick"></select></label>
+    <label class="check"><input type="checkbox" id="earLocal"> On-device recognition (test)</label></div>
   <div class="grid" id="earAns"></div>
   <p class="small" id="earVoice" aria-live="polite"></p>
   <details id="hfLogBox" class="small"><summary>Voice log (for troubleshooting)</summary><button class="ghost" id="hfCopy">Copy log</button><pre id="hfLog"></pre></details>
@@ -456,7 +457,7 @@ function rEar(){
   $('#earKeyRow').style.display=(t==='deg'||t==='echo')?'flex':'none';
   $('#earSlow').style.display=t==='echo'?'':'none';
   $('#earMic').style.display=t==='echo'&&!MIC.blocked?'':'none';
-  $('#earHfRow').style.display=t==='echo'?'none':'';$('#earVoiceRow').style.display=$('#hfLogBox').style.display=t==='echo'||!HF.on?'none':'';if(HF.on)fillVoices();$('#earHf').checked=HF.on;
+  $('#earHfRow').style.display=t==='echo'?'none':'';$('#earVoiceRow').style.display=$('#hfLogBox').style.display=t==='echo'||!HF.on?'none':'';if(HF.on)fillVoices();$('#earHf').checked=HF.on;$('#earLocal').checked=!!HF.local;
   if(typeof rDrill==='function')rDrill();
   $('#earNew').textContent=t==='echo'?'New phrase':t==='chord'?'New chord':'New note';
   $('#earAns').style.gridTemplateColumns=t==='echo'?'repeat(3,1fr)':'';
@@ -667,9 +668,36 @@ const earOn=()=>$('#v-ear').classList.contains('on')&&!document.hidden;
 function voiceMsg(html,bad){const el=$('#earVoice');el.className='small'+(bad?' no':'');el.innerHTML=html}
 // Android Chrome allows one recognition session at a time: stopping one is not instant, and starting
 // another before the last has ended fails silently. HF.live is the session that hasn't ended yet.
+/* on-device recognition (test switch): runs speech recognition on the phone, with hints listing the
+   answers the current question expects, so short words like "one" aren't dropped */
+const LOCAL_KEY='woodshed-ondevice';
+const HINTS={
+  deg:{0:['the one','one','root'],1:['flat two'],2:['the two','two'],3:['flat three','minor third'],4:['the three','three','major third'],
+    5:['the four','four'],6:['sharp four','flat five'],7:['the five','five'],8:['flat six'],9:['the six','six'],10:['flat seven'],11:['the seven','seven','major seven']},
+  int:{1:['minor second','half step'],2:['major second','whole step'],3:['minor third'],4:['major third'],5:['perfect fourth'],6:['tritone'],
+    7:['perfect fifth'],8:['minor sixth'],9:['major sixth'],10:['minor seventh'],11:['major seventh'],12:['octave']},
+  chord:{maj:['major'],min:['minor'],'7':['dominant seven','seven'],maj7:['major seven'],m7:['minor seven'],dim:['diminished'],sus4:['sus four'],sus2:['sus two'],six:['six']}};
+function hintPhrases(t,pool){const out=[];pool.forEach(a=>((HINTS[t]||{})[a]||[]).forEach(p=>out.push([p,3])));
+  ['repeat','skip','next set','pause','resume'].forEach(p=>out.push([p,2]));return out}
+function localSet(on,why){HF.local=on;$('#earLocal').checked=on;try{localStorage.setItem(LOCAL_KEY,on?'1':'')}catch(e){}
+  hfLog('on-device '+(on?'on':'off')+(why?': '+why:''))}
+async function localEnable(){
+  if(!SR||typeof SR.available!=='function'){localSet(false,'not supported');voiceMsg("This version of Chrome can't do on-device recognition. Staying with normal recognition.",true);return}
+  const langs=[...new Set([hfLang(),'en-US'])];
+  for(const l of langs){let st;
+    try{st=await SR.available({langs:[l],processLocally:true})}catch(e){st='error: '+(e.message||e)}
+    hfLog('on-device '+l+': '+st);
+    if(st==='downloadable'||st==='downloading'){voiceMsg('Downloading the speech pack for on-device recognition (one time only)…');
+      let ok=false;try{ok=await SR.install({langs:[l],processLocally:true})}catch(e){hfLog('install failed: '+(e.message||e))}
+      st=ok?'available':st}
+    if(st==='available'){HF.localLang=l;HF.noHints=false;localSet(true);voiceMsg('On-device recognition is on. Tell me if it hears you better.');
+      const c=E.cur;if(HF.on&&c&&!c.ans&&c.t!=='echo')hfSchedule();return}}
+  localSet(false,'unavailable');voiceMsg("On-device recognition isn't available on this phone. Staying with normal recognition.",true)}
+$('#earLocal').onchange=e=>{if(e.target.checked)localEnable();else{localSet(false);voiceMsg('On-device recognition is off.')}};
+const hfLang=()=>/^en/i.test(navigator.language)?navigator.language:'en-US';
 function hfStop(){clearTimeout(HF.timer);HF.timer=null;const r=HF.rec;HF.rec=null;
   if(r){hfLog('stop: aborting session #'+r.n);try{r.abort()}catch(e){}setTimeout(()=>{if(HF.live===r)HF.live=null},1500)}}
-function hfSet(on){HF.on=on;$('#earHf').checked=on;$('#earVoiceRow').style.display=$('#hfLogBox').style.display=on?'':'none';hfLog('hands-free '+(on?'on':'off'));if(on)fillVoices();try{localStorage.setItem(HF_KEY,on?'1':'')}catch(e){}
+function hfSet(on){HF.on=on;$('#earHf').checked=on;$('#earLocal').checked=HF.local;$('#earVoiceRow').style.display=$('#hfLogBox').style.display=on?'':'none';hfLog('hands-free '+(on?'on':'off'));if(on)fillVoices();try{localStorage.setItem(HF_KEY,on?'1':'')}catch(e){}
   if(!on){hfStop();clearTimeout(HF.adv);if(window.speechSynthesis)speechSynthesis.cancel()}}
 function hfFail(msg){hfSet(false);voiceMsg(msg+' Tapping still works.',true)}
 // listen once the question's sound has finished, so the app doesn't hear itself
@@ -685,7 +713,11 @@ function hfListen(c,tries){tries=tries||0;
   if(tries>=20)hfLog('gave up waiting ('+(HF.live?'session':'speech')+'), starting anyway');
   HF.live=null;
   let r;try{r=new SR()}catch(e){hfFail("Voice answers aren't supported in this browser.");return}
-  HF.n=(HF.n||0)+1;r.n=HF.n;HF.rec=r;HF.live=r;r.lang=/^en/i.test(navigator.language)?navigator.language:'en-US';r.interimResults=true;r.maxAlternatives=5;r.continuous=false;
+  HF.n=(HF.n||0)+1;r.n=HF.n;HF.rec=r;HF.live=r;r.lang=hfLang();r.interimResults=true;r.maxAlternatives=5;r.continuous=false;
+  let hints=0;
+  if(HF.local){r.lang=HF.localLang||r.lang;try{r.processLocally=true}catch(e){}
+    if(!HF.noHints&&window.SpeechRecognitionPhrase){try{const ph=hintPhrases(c.t,earPool().map(o=>o.a));r.phrases=ph.map(([p,b])=>new SpeechRecognitionPhrase(p,b));hints=ph.length}
+      catch(e){HF.noHints=true;hfLog('hints not supported: '+(e.message||e))}}}
   let heard=false,last=null,spoke=false;
   const judge=alts=>{
     if(D.on&&D.paused){if(vCmd(alts[0])==='resume'){voiceMsg('Heard: <q>'+esc(alts[0])+'</q>. Resuming.');drillResume()}
@@ -704,6 +736,10 @@ function hfListen(c,tries){tries=tries||0;
     if(!res.isFinal){last=alts;HF.hold=false;voiceMsg('Heard: <q>'+esc(alts[0])+'</q>');return}
     last=null;judge(alts)};
   r.onerror=e=>{hfLog('#'+r.n+' error: '+e.error+(HF.rec!==r?' (old session)':''));if(HF.rec!==r)return;
+    // on-device trouble: drop the hints, or fall back to normal recognition; the session restarts on its own
+    if(HF.local&&e.error==='phrases-not-supported'){HF.noHints=true;return}
+    if(HF.local&&!['no-speech','aborted','not-allowed','audio-capture'].includes(e.error)){localSet(false,e.error);
+      voiceMsg('On-device recognition failed here ('+esc(e.error)+'), so I switched back to normal recognition.',true);return}
     if(e.error==='not-allowed'||e.error==='service-not-allowed')hfFail("The microphone is blocked. Allow it for this site (the icon in the address bar), then turn Hands-free back on.");
     else if(e.error==='audio-capture')hfFail('No microphone was found.');
     else if(e.error==='network')hfFail('Voice recognition needs an internet connection.')};
@@ -722,7 +758,7 @@ function hfListen(c,tries){tries=tries||0;
     clearTimeout(HF.timer);HF.timer=setTimeout(()=>hfListen(c),100)};
   r.onaudiostart=()=>hfLog('#'+r.n+' mic open');r.onspeechstart=()=>{spoke=true;hfLog('#'+r.n+' speech detected')};
   r.onstart=()=>{hfLog('#'+r.n+' started');if(HF.rec===r&&!HF.hold)voiceMsg('🎤 Listening. Say your answer.')};
-  hfLog('#'+r.n+' start ('+r.lang+')');
+  hfLog('#'+r.n+' start ('+r.lang+(HF.local?', on-device, '+hints+' hints':'')+')');
   try{r.start()}
   catch(e){hfLog('#'+r.n+' start FAILED: '+(e.name||'')+' '+(e.message||e));HF.rec=null;HF.live=null;if(tries<25)HF.timer=setTimeout(()=>hfListen(c,tries+5),500);else hfPaused()}
 }
@@ -754,7 +790,7 @@ $('#hfLogBox').addEventListener('toggle',()=>{$('#hfLog').textContent=HFL.join('
 $('#hfCopy').onclick=async()=>{const t='Woodshed voice log\n'+navigator.userAgent+'\nlang '+navigator.language+'\n'+HFL.join('\n');
   try{await navigator.clipboard.writeText(t);$('#hfCopy').textContent='Copied'}catch(e){const r=document.createRange();r.selectNodeContents($('#hfLog'));getSelection().removeAllRanges();getSelection().addRange(r);$('#hfCopy').textContent='Selected, now copy'}
   setTimeout(()=>{$('#hfCopy').textContent='Copy log'},2000)};
-try{HF.on=!!SR&&localStorage.getItem(HF_KEY)==='1'}catch(e){}
+try{HF.on=!!SR&&localStorage.getItem(HF_KEY)==='1';HF.local=!!SR&&localStorage.getItem(LOCAL_KEY)==='1';HF.localLang=hfLang()}catch(e){}
 /* ---------- daily drill: sets and reps, run hands-free ---------- */
 // kept in its own storage slot, like the hands-free setting, so the main save format is untouched
 const DRILL_KEY='woodshed-drill';
