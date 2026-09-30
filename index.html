@@ -71,7 +71,7 @@ ol.blocks li.done::before{color:var(--accent)}
 .grid button.no{background:var(--bad);color:#fff;border-color:transparent}
 .fbk{min-height:3.2em;font-size:17px;margin:4px 0}
 .fbk.ok{color:var(--good)}.fbk.no{color:var(--bad)}
-#earVoice{margin:0;min-height:1.4em}#earVoice:empty{display:none}#earVoice.no{color:var(--bad)}#earVoice q{color:var(--ink);font-weight:600}
+#earVoice{margin:0;min-height:1.4em}#earVoice:empty{display:none}#earVoice.no{color:var(--bad)}#earVoice button{padding:4px 10px;font-size:14px;margin:0 4px}#earVoice q{color:var(--ink);font-weight:600}
 .board{display:flex;justify-content:center;margin:10px 0 4px}
 .board svg{max-width:100%;height:auto;display:block}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
@@ -646,7 +646,10 @@ function say(txt,done){let fired=false;const fin=()=>{if(!fired){fired=true;if(d
   setTimeout(fin,600)}
 const earOn=()=>$('#v-ear').classList.contains('on')&&!document.hidden;
 function voiceMsg(html,bad){const el=$('#earVoice');el.className='small'+(bad?' no':'');el.innerHTML=html}
-function hfStop(){clearTimeout(HF.timer);HF.timer=null;const r=HF.rec;HF.rec=null;if(r){try{r.abort()}catch(e){}}}
+// Android Chrome allows one recognition session at a time: stopping one is not instant, and starting
+// another before the last has ended fails silently. HF.live is the session that hasn't ended yet.
+function hfStop(){clearTimeout(HF.timer);HF.timer=null;const r=HF.rec;HF.rec=null;
+  if(r){try{r.abort()}catch(e){}setTimeout(()=>{if(HF.live===r)HF.live=null},1500)}}
 function hfSet(on){HF.on=on;$('#earHf').checked=on;$('#earVoiceRow').style.display=on?'':'none';if(on)fillVoices();try{localStorage.setItem(HF_KEY,on?'1':'')}catch(e){}
   if(!on){hfStop();clearTimeout(HF.adv);if(window.speechSynthesis)speechSynthesis.cancel()}}
 function hfFail(msg){hfSet(false);voiceMsg(msg+' Tapping still works.',true)}
@@ -655,15 +658,15 @@ function hfSchedule(){hfStop();clearTimeout(HF.adv);const c=E.cur;
   if(!HF.on||!c||c.t==='echo'||c.ans)return;
   HF.misses=0;HF.hold=false;voiceMsg('Listen…');
   HF.timer=setTimeout(()=>hfListen(c),({deg:3200,int:800,chord:1000}[c.t]||0)+900)}
-function hfListen(c){
+function hfListen(c,tries){tries=tries||0;
   hfStop();if(!HF.on||E.cur!==c||c.ans||!earOn())return;
+  // wait for the previous session to close and for the spoken feedback to finish
+  if((HF.live||(window.speechSynthesis&&speechSynthesis.speaking))&&tries<20){HF.timer=setTimeout(()=>hfListen(c,tries+1),250);return}
+  HF.live=null;
   let r;try{r=new SR()}catch(e){hfFail("Voice answers aren't supported in this browser.");return}
-  HF.rec=r;r.lang=/^en/i.test(navigator.language)?navigator.language:'en-US';r.interimResults=true;r.maxAlternatives=5;r.continuous=false;
-  let heard=false;
-  r.onresult=e=>{if(HF.rec!==r)return;if(E.cur!==c||c.ans){hfStop();return}
-    const res=e.results[e.results.length-1],alts=[...res].map(x=>x.transcript.trim()).filter(Boolean);
-    if(!alts.length)return;heard=true;
-    if(!res.isFinal){HF.hold=false;voiceMsg('Heard: <q>'+esc(alts[0])+'</q>');return}
+  HF.rec=r;HF.live=r;r.lang=/^en/i.test(navigator.language)?navigator.language:'en-US';r.interimResults=true;r.maxAlternatives=5;r.continuous=false;
+  let heard=false,last=null;
+  const judge=alts=>{
     const pool=earPool().map(o=>o.a);
     for(const t of alts){const a=voiceMatch(t,c.t,pool);if(a){voiceMsg('Heard: <q>'+esc(t)+'</q>');earAnswer(a);return}}
     const cmd=vCmd(alts[0]);
@@ -671,16 +674,27 @@ function hfListen(c){
     if(cmd==='next'){voiceMsg('Heard: <q>'+esc(alts[0])+'</q>. Skipping.');earNew();return}
     if(cmd==='stop'){hfSet(false);voiceMsg('Hands-free is off. Tap your answers.');return}
     HF.hold=true;voiceMsg('Heard: <q>'+esc(alts[0])+'</q>. That isn\'t one of the choices. Try again: '+earPool().map(o=>o.l).join(', ')+'.',true)};
+  r.onresult=e=>{if(HF.rec!==r)return;if(E.cur!==c||c.ans){hfStop();return}
+    const res=e.results[e.results.length-1],alts=[...res].map(x=>x.transcript.trim()).filter(Boolean);
+    if(!alts.length)return;heard=true;
+    if(!res.isFinal){last=alts;HF.hold=false;voiceMsg('Heard: <q>'+esc(alts[0])+'</q>');return}
+    last=null;judge(alts)};
   r.onerror=e=>{if(HF.rec!==r)return;
     if(e.error==='not-allowed'||e.error==='service-not-allowed')hfFail("The microphone is blocked. Allow it for this site (the icon in the address bar), then turn Hands-free back on.");
     else if(e.error==='audio-capture')hfFail('No microphone was found.');
     else if(e.error==='network')hfFail('Voice recognition needs an internet connection.')};
-  r.onend=()=>{if(HF.rec!==r)return;HF.rec=null;
+  r.onend=()=>{if(HF.live===r)HF.live=null;if(HF.rec!==r)return;HF.rec=null;
     if(!HF.on||E.cur!==c||c.ans||!earOn())return;
-    if(!heard&&++HF.misses>=6){voiceMsg('Stopped listening. Tap Replay to hear it again and answer, or just tap.');return}
-    HF.timer=setTimeout(()=>hfListen(c),250)};
-  try{r.start();if(!HF.hold)voiceMsg('🎤 Listening. Say your answer.')}catch(e){HF.rec=null}
+    // Android sometimes ends without marking the result final; use what it heard
+    if(last){const l=last;last=null;judge(l);if(c.ans||E.cur!==c||!HF.on)return}
+    if(!heard&&++HF.misses>=6){hfPaused();return}
+    HF.timer=setTimeout(()=>hfListen(c),300)};
+  try{r.start();if(!HF.hold)voiceMsg('🎤 Listening. Say your answer.')}
+  catch(e){HF.rec=null;HF.live=null;if(tries<25)HF.timer=setTimeout(()=>hfListen(c,tries+5),500);else hfPaused()}
 }
+function hfPaused(){voiceMsg('Stopped listening. <button class="ghost" id="hfAgain">Listen again</button> or just tap your answer.')}
+$('#earVoice').addEventListener('click',e=>{if(!e.target.closest('#hfAgain'))return;const c=E.cur;
+  if(HF.on&&c&&!c.ans&&c.t!=='echo'){HF.misses=0;HF.hold=false;hfListen(c)}});
 function hfAfter(c,ok){hfStop();
   say((ok?'Yes! ':'No, it was ')+sayLabel(c,ok)+'.',()=>{
     HF.adv=setTimeout(()=>{if(HF.on&&E.cur===c&&earOn())earNew()},ok?600:1400)})}
