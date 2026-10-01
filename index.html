@@ -71,7 +71,8 @@ ol.blocks li.done::before{color:var(--accent)}
 .grid button.no{background:var(--bad);color:#fff;border-color:transparent}
 .fbk{min-height:3.2em;font-size:17px;margin:4px 0}
 .fbk.ok{color:var(--good)}.fbk.no{color:var(--bad)}
-#earVoice{margin:0;min-height:1.4em}#earVoice:empty{display:none}#earVoice.no{color:var(--bad)}.drill{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:12px 14px;margin:6px 0 16px}
+#earVoice{margin:0;min-height:1.4em}#earVoice:empty{display:none}#earVoice.no{color:var(--bad)}.shapes{display:flex;flex-wrap:wrap;gap:4px 10px;margin:6px 0}.shapes svg{display:block}.shp .chips{margin-top:12px}
+.drill{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:12px 14px;margin:6px 0 16px}
 .drill .dh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:19px}.drill .dh span{font-size:14px;color:var(--muted)}
 .drill .small{margin:4px 0 8px}.drill .line{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .dbar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}.dbar span{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
@@ -1071,6 +1072,95 @@ $('#jamPlay').onclick=()=>J.on?jamStop():jamStart();
 
 /* ---------- songs ---------- */
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+/* ---------- chord shapes: worked out for any chord on any of the instruments ---------- */
+const DEGS={0:'1',1:'♭2',2:'2',3:'♭3',4:'3',5:'4',6:'♭5',7:'5',8:'♯5',9:'6',10:'♭7',11:'7'};
+// best playable chord voicing for a tuning: root in the bass, every chord tone except maybe the 5th,
+// fingers within four frets, muted strings only at the edges; lower positions and open strings preferred
+function findShape(open,root,iv){
+  const n=open.length,pcs=iv.map(x=>mod(root+x)),
+    need=new Set((iv.length>3?[iv[0],iv[1],iv[3]]:iv).map(x=>mod(root+x))),minPlay=n>=6?4:3;
+  let best=null,bestSc=1e9;
+  for(let p=0;p<=9;p++){
+    const win=[...new Set([0,p,p+1,p+2,p+3])],opts=open.map(o=>[-1,...win.filter(f=>pcs.includes(mod(o+f)))]);
+    const cur=new Array(n);
+    (function go(s){
+      if(s<n){for(const f of opts[s]){cur[s]=f;go(s+1)}return}
+      const pl=[];cur.forEach((f,i)=>{if(f>=0)pl.push(i)});
+      if(pl.length<minPlay)return;
+      const a=pl[0],b=pl[pl.length-1];if(b-a+1!==pl.length)return;
+      if(mod(open[a]+cur[a])!==root)return;
+      const got=new Set(pl.map(i=>mod(open[i]+cur[i])));for(const x of need)if(!got.has(x))return;
+      const fr=pl.filter(i=>cur[i]>0).map(i=>cur[i]);
+      let mn=0,mx=0,fingers=0;
+      if(fr.length){mn=Math.min(...fr);mx=Math.max(...fr);if(mx-mn>3)return;
+        fingers=fr.length;
+        if(fingers>4){// needs a barre at the lowest fret: no open strings above where it starts
+          // the barre starts on the lowest string played, with nothing open above it
+          const at=pl.filter(i=>cur[i]===mn);if(at[0]!==a||pl.some(i=>i>at[0]&&cur[i]===0))return;
+          fingers=1+fr.filter(f=>f!==mn).length;if(fingers>4)return}}
+      const opens=pl.filter(i=>cur[i]===0).length;
+      const sc=mn+(n-pl.length)*.6+fingers*.4+(got.size<pcs.length?.8:0)+(mx-mn)*.5+(mx>=4?opens:-opens*.2);
+      if(sc<bestSc){bestSc=sc;best=cur.slice()}})(0);
+  }
+  return best}
+// bass: the chord's arpeggio in one position, root on the E or A string
+function bassBox(open,root,iv){
+  const c=[0,1].map(s=>({s,f:mod(root-open[s])})).sort((x,y)=>x.f-y.f||x.s-y.s)[0];
+  const lo=Math.max(0,c.f-1),rp=open[c.s]+c.f,pcs=iv.map(x=>mod(root+x)),dots=[];
+  for(let s=c.s;s<open.length;s++)for(let f=lo;f<=lo+4;f++){const p=open[s]+f;
+    if(p>=rp&&p<=rp+14&&pcs.includes(mod(p)))dots.push({s,f,lab:DEGS[mod(p-root)],root:mod(p)===root})}
+  return dots}
+function chordSvg(name,open,dots,mutes){
+  const n=open.length,sg=n>=6?16:n===5?19:22,pad=20,W=pad*2+(n-1)*sg,rows=5,fh=22,top=40;
+  const fretted=dots.filter(d=>d.f>0).map(d=>d.f),mx=fretted.length?Math.max(...fretted):0;
+  const base=mx<=rows?1:Math.min(...fretted),H=top+rows*fh+22,X=s=>pad+s*sg;
+  let s=`<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img" aria-label="${esc(name)} shape">`;
+  s+=`<text x="${W/2}" y="15" text-anchor="middle" font-size="15" font-weight="700" style="fill:var(--ink);font-family:var(--font)">${esc(name)}</text>`;
+  for(let r=0;r<=rows;r++)s+=`<line x1="${X(0)}" x2="${X(n-1)}" y1="${top+r*fh}" y2="${top+r*fh}" style="stroke:var(--muted)" stroke-width="${r===0&&base===1?4:1}"/>`;
+  for(let i=0;i<n;i++){s+=`<line x1="${X(i)}" x2="${X(i)}" y1="${top}" y2="${top+rows*fh}" style="stroke:var(--muted)" stroke-width="1.2"/>`;
+    s+=`<text x="${X(i)}" y="${H-5}" text-anchor="middle" font-size="10" style="fill:var(--muted);font-family:var(--font)">${NS[mod(open[i])]}</text>`;
+    if(mutes&&mutes[i])s+=`<text x="${X(i)}" y="${top-7}" text-anchor="middle" font-size="12" style="fill:var(--muted);font-family:var(--font)">×</text>`}
+  if(base>1)s+=`<text x="${X(0)-7}" y="${top+fh/2+4}" text-anchor="end" font-size="10" style="fill:var(--muted);font-family:var(--font)">${base}fr</text>`;
+  dots.forEach(d=>{d={...d,lab:d.lab.replace('♭','b').replace('♯','#')};const cx=X(d.s),r=d.lab.length>1?8.5:7.5;
+    if(d.f===0){s+=`<circle cx="${cx}" cy="${top-11}" r="${r-1}" style="fill:var(--bg);stroke:${d.root?'var(--accent)':'var(--ink)'}" stroke-width="1.6"/>`;
+      s+=`<text x="${cx}" y="${top-8}" text-anchor="middle" font-size="${d.lab.length>1?8:8.5}" font-weight="700" letter-spacing="-.4" style="fill:${d.root?'var(--accent)':'var(--ink)'};font-family:var(--font)">${d.lab}</text>`;return}
+    const cy=top+(d.f-base+.5)*fh;
+    s+=`<circle cx="${cx}" cy="${cy}" r="${r}" style="fill:${d.root?'var(--accent)':'var(--ink)'}"/>`;
+    s+=`<text x="${cx}" y="${cy+3}" text-anchor="middle" font-size="${d.lab.length>1?8:8.5}" font-weight="700" letter-spacing="-.4" style="fill:${d.root?'var(--accent-ink)':'var(--bg)'};font-family:var(--font)">${d.lab}</text>`});
+  return s+'</svg>'}
+const GTR_OPEN={C:'x32010',G:'320003',D:'xx0232',A:'x02220',E:'022100',Am:'x02210',Em:'022000',Dm:'xx0231',
+  Fmaj7:'xx3210',Em7:'020000',Dm7:'xx0211',Cmaj7:'x32000',Gmaj7:'320002',Amaj7:'x02120',Dmaj7:'xx0222',Emaj7:'021100',
+  C7:'x32310',G7:'320001',D7:'xx0212',A7:'x02020',E7:'020100',B7:'x21202',Am7:'x02010',
+  Asus4:'x02230',Dsus4:'xx0233',Esus4:'022200',Asus2:'x02200',Dsus2:'xx0230',C6:'x32210',G6:'320000'};
+const GQ={maj:'',min:'m','7':'7',maj7:'maj7',m7:'m7',dim:'dim',sus4:'sus4',sus2:'sus2',six:'6'};
+const E_SHAPE={maj:[0,2,2,1,0,0],min:[0,2,2,0,0,0],'7':[0,2,0,1,0,0],m7:[0,2,0,0,0,0],maj7:[0,-1,1,1,0,-1],sus4:[0,2,2,2,0,0]};
+const A_SHAPE={maj:[-1,0,2,2,2,0],min:[-1,0,2,2,1,0],'7':[-1,0,2,0,2,0],m7:[-1,0,2,0,1,0],maj7:[-1,0,2,1,2,0],sus4:[-1,0,2,2,3,0],sus2:[-1,0,2,2,0,0],dim:[-1,0,1,2,1,-1],six:[-1,0,2,2,2,2]};
+function guitarShape(c){
+  const o=GTR_OPEN[NS[c.root].replace('♯','#')+GQ[c.q]]||GTR_OPEN[NF[c.root]+GQ[c.q]];
+  if(o)return[...o].map(ch=>ch==='x'?-1:+ch);
+  const e=mod(c.root-40),a=mod(c.root-45),opts=[];
+  if(E_SHAPE[c.q])opts.push({f:e||12,sh:E_SHAPE[c.q]});
+  if(A_SHAPE[c.q])opts.push({f:a||12,sh:A_SHAPE[c.q]});
+  if(!opts.length)return null;
+  const b=opts.sort((x,y)=>x.f-y.f)[0];return b.sh.map(x=>x<0?-1:x+b.f)}
+function shapeFor(inst,c){const I=INST[inst],iv=CHQ[c.q].iv;
+  if(inst==='bass')return chordSvg(c.name,I.open,bassBox(I.open,c.root,iv));
+  const f=(inst==='guitar'&&guitarShape(c))||findShape(I.open,c.root,iv);if(!f)return'';
+  return chordSvg(c.name,I.open,f.map((x,s)=>x<0?null:{s,f:x,lab:DEGS[mod(I.open[s]+x-c.root)],root:mod(I.open[s]+x)===c.root}).filter(Boolean),f.map(x=>x<0))}
+const RN={0:'I',1:'♭II',2:'II',3:'♭III',4:'III',5:'IV',6:'♯IV',7:'V',8:'♭VI',9:'VI',10:'♭VII',11:'VII'};
+function roman(c,k){let r=RN[mod(c.root-k)];if(['min','m7','dim'].includes(c.q))r=r.toLowerCase();
+  return r+({maj:'',min:'',7:'7',maj7:'maj7',m7:'7',dim:'°',sus4:'sus4',sus2:'sus2',six:'6'}[c.q]??'')}
+let SH_INST=null;
+function shapesHTML(s){const k=parseKey(s.k),r=parseProg(s.prog,k??0);if(!r.bars.length)return'';
+  const inst=SH_INST||S.inst,seen=new Set(),uniq=r.bars.filter(c=>!seen.has(c.name)&&seen.add(c.name));
+  return `<div class="chips">${Object.entries(INST).map(([key,v])=>`<button data-shi="${key}" class="${key===inst?'on':''}">${v.n}</button>`).join('')}</div>
+    ${k!==null?`<p class="small">In ${KN[k]}: ${r.bars.map(c=>roman(c,k)).join(' · ')}</p>`:''}
+    <div class="shapes">${uniq.map(c=>shapeFor(inst,c)).join('')}</div>
+    <p class="small">${inst==='bass'?'Each chord as an arpeggio in one spot. Teal is the root: play it on beat one, then walk the other tones.':'Numbers show each note\'s job in the chord. Teal is the root, × means don\'t play that string.'}</p>`}
+// fill in songs we know the chords for, once, only where the card is still empty
+try{if(!localStorage.getItem('woodshed-fills-1')){const p=S.songs.find(s=>/^peaches$/i.test(s.t.trim()));
+  if(p){if(!p.prog)p.prog='Fmaj7 Em7 Dm7 Cmaj7';if(!p.k)p.k='C';if(!p.bpm)p.bpm='90';save()}
+  localStorage.setItem('woodshed-fills-1','1')}}catch(e){}
 function rSongs(){
   $('#songList').innerHTML=S.songs.map((s,i)=>`<div class="song" data-i="${i}">
     <input class="plain t" data-f="t" value="${esc(s.t)}" aria-label="Song title">
@@ -1079,11 +1169,14 @@ function rSongs(){
     <div class="meta"><label class="sel">Key<input data-f="k" value="${esc(s.k)}" placeholder="e.g. A"></label>
     <label class="sel">Target bpm<input data-f="bpm" inputmode="numeric" value="${esc(s.bpm)}" placeholder="e.g. 120"></label>
     <label class="sel wide">Chords<input data-f="prog" value="${esc(s.prog||'')}" placeholder="G D Em C  or  I V vi IV" autocapitalize="off" spellcheck="false"></label>
-    <button class="ghost" data-jam="${s.id}">Jam on it</button><button class="ghost" data-del="${i}">Remove</button></div></div>`).join('')||'<p class="lede">No songs yet. Add the first one.</p>';
+    <button class="ghost" data-jam="${s.id}">Jam on it</button><button class="ghost" data-del="${i}">Remove</button></div>
+    <div class="shp">${shapesHTML(s)}</div></div>`).join('')||'<p class="lede">No songs yet. Add the first one.</p>';
 }
-$('#songList').addEventListener('input',e=>{const el=e.target,card=el.closest('.song');if(!card||!el.dataset.f)return;S.songs[+card.dataset.i][el.dataset.f]=el.value;save()});
+$('#songList').addEventListener('input',e=>{const el=e.target,card=el.closest('.song');if(!card||!el.dataset.f)return;S.songs[+card.dataset.i][el.dataset.f]=el.value;save();
+  if(el.dataset.f==='prog'||el.dataset.f==='k')card.querySelector('.shp').innerHTML=shapesHTML(S.songs[+card.dataset.i])});
 $('#songList').addEventListener('change',e=>{const el=e.target,card=el.closest('.song');if(!card||el.dataset.st===undefined)return;S.songs[+card.dataset.i].st[+el.dataset.st]=el.checked;save()});
-$('#songList').addEventListener('click',e=>{const j=e.target.closest('button[data-jam]');if(j){S.jam.src='s'+j.dataset.jam;save();show('jam');return}const b=e.target.closest('button[data-del]');if(!b)return;if(confirm('Remove this song?')){S.songs.splice(+b.dataset.del,1);save();rSongs()}});
+$('#songList').addEventListener('click',e=>{const si=e.target.closest('button[data-shi]');if(si){SH_INST=si.dataset.shi;document.querySelectorAll('#songList .song').forEach(c=>{c.querySelector('.shp').innerHTML=shapesHTML(S.songs[+c.dataset.i])});return}
+  const j=e.target.closest('button[data-jam]');if(j){S.jam.src='s'+j.dataset.jam;save();show('jam');return}const b=e.target.closest('button[data-del]');if(!b)return;if(confirm('Remove this song?')){S.songs.splice(+b.dataset.del,1);save();rSongs()}});
 $('#addSong').onclick=()=>{S.songs.push({id:Date.now(),t:'New song',a:'',st:[false,false,false,false,false],k:'',bpm:''});save();rSongs();const ins=document.querySelectorAll('input.t');const last=ins[ins.length-1];if(last){last.focus();last.select()}};
 
 /* ---------- nav ---------- */
