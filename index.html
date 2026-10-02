@@ -72,6 +72,12 @@ ol.blocks li.done::before{color:var(--accent)}
 .fbk{min-height:3.2em;font-size:17px;margin:4px 0}
 .fbk.ok{color:var(--good)}.fbk.no{color:var(--bad)}
 #earVoice{margin:0;min-height:1.4em}#earVoice:empty{display:none}#earVoice.no{color:var(--bad)}.improv{margin:10px 0;padding:10px 12px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 10px 10px 0}.improv p{margin:4px 0}.improv button{margin-top:6px;padding:6px 12px;font-size:15px}
+.chart{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:6px 0 10px}
+.chart .bar{position:relative;border:1px solid var(--line);border-radius:8px;padding:16px 4px 6px;text-align:center;min-height:64px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.chart .r0{background:var(--surface)}.chart .r1{background:color-mix(in srgb,var(--accent) 14%,var(--surface))}
+.chart .bar b{font-size:16px;line-height:1.1}.chart .cont b{color:var(--muted);font-weight:400}
+.chart .bn{position:absolute;top:2px;left:6px;font-size:11px;color:var(--muted)}
+.chart .hold{font-size:11px;color:var(--muted)}.chart .beats{font-size:12px;letter-spacing:3px;color:var(--muted);margin-top:auto}
 .shapes{display:flex;flex-wrap:wrap;gap:4px 10px;margin:6px 0}.shapes svg{display:block}.shp .chips{margin-top:12px}
 .drill{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:12px 14px;margin:6px 0 16px}
 .drill .dh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:19px}.drill .dh span{font-size:14px;color:var(--muted)}
@@ -219,7 +225,7 @@ label.wide input{width:100%}
   <p class="lede">Loop a progression and improvise over it. Turn the bass off and play that part yourself.</p>
   <div class="row"><label class="sel">Loop <select id="jamSrc"></select></label><label class="sel">Key <select id="jamKey"></select></label></div>
   <label class="sel wide">Chords, one per bar <input id="jamProg" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-  <p class="small" id="jamHelp">Letters (G D Em C) or numbers (I V vi IV). Write a chord twice to hold it two bars.</p>
+  <p class="small" id="jamHelp">Letters (G D Em C) or numbers (I V vi IV). Write a chord twice to hold it two bars. Start with 3/4 for a waltz.</p>
   <div class="jam">
     <div><div id="jamNow">–</div><div class="small" id="jamNext"></div></div>
     <div class="bars" id="jamBars"></div>
@@ -1013,9 +1019,11 @@ function parseChord(tok,k){
   m=tok.match(/^([A-G])([#♯b♭]?)([^/]*)/);
   if(m){const a=accOf(m[2]),root=mod(LET[m[1]]+a),q=qual(m[3]);return{root,q,name:m[1]+(a<0?'♭':a>0?'♯':'')+QSUF[q]}}
   return null}
-function parseProg(txt,k){const bad=[],bars=[];
-  String(txt||'').split(/[\s|,]+/).filter(t=>t&&!/^[-–—]+$/.test(t)).forEach(t=>{const c=parseChord(t,k);c?bars.push(c):bad.push(t)});
-  return{bars,bad}}
+function parseProg(txt,k){const bad=[],bars=[];let beats=4;
+  String(txt||'').split(/[\s|,]+/).filter(t=>t&&!/^[-–—]+$/.test(t)).forEach(t=>{
+    const ts=t.match(/^([2-7])\/(4|8)$/);if(ts){beats=+ts[1];return}
+    const c=parseChord(t,k);c?bars.push(c):bad.push(t)});
+  return{bars,bad,beats}}
 function parseKey(s){const m=String(s||'').trim().match(/^([A-Ga-g])([#♯b♭]?)/);return m?mod(LET[m[1].toUpperCase()]+accOf(m[2])):null}
 let J={on:false,iv:null,next:0,beat:0,bars:[],cur:-1};
 let NB=null;
@@ -1027,8 +1035,8 @@ function hit(t,type){const c=A();
   s.buffer=noiseBuf();f.type='highpass';f.frequency.value=type==='snare'?1200:7000;
   g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);s.connect(f);f.connect(g);g.connect(c.destination);s.start(t);s.stop(t+d+.02)}
 const jamSong=()=>S.jam.src[0]==='s'?S.songs.find(x=>'s'+x.id===S.jam.src):null;
-function jamParse(){const r=parseProg($('#jamProg').value,+$('#jamKey').value);J.bars=r.bars;
-  $('#jamHelp').textContent=r.bad.length?`Couldn't read: ${r.bad.join(', ')}. Try letters (G D Em C) or numbers (I V vi IV).`:'Letters (G D Em C) or numbers (I V vi IV). Write a chord twice to hold it two bars.';
+function jamParse(){const r=parseProg($('#jamProg').value,+$('#jamKey').value);J.bars=r.bars;J.beats=r.beats;
+  $('#jamHelp').textContent=r.bad.length?`Couldn't read: ${r.bad.join(', ')}. Try letters (G D Em C) or numbers (I V vi IV).`:'Letters (G D Em C) or numbers (I V vi IV). Write a chord twice to hold it two bars. Start with 3/4 for a waltz.';
   if(J.cur>=J.bars.length)J.cur=0;updJamNow()}
 function updJamNow(){const b=J.bars,i=J.cur<0?0:J.cur,cur=b[i],nx=b[(i+1)%Math.max(1,b.length)];
   $('#jamNow').textContent=cur?cur.name:'–';$('#jamNext').textContent=b.length>1&&nx?'Next: '+nx.name:'';
@@ -1050,12 +1058,18 @@ function jamTip(){const k=+$('#jamKey').value,song=jamSong();
   $('#jamTip').textContent=song?`Key of ${KN[k]}. Play the melody over the loop first, then change one thing each time around.`:`Improvise with ${KN[k]} ${PRESETS[+S.jam.src.slice(1)].tip}. Tap Fretboard or Today to see the notes while it plays.`}
 function jamBeat(b,t){
   const c=A(),bars=J.bars;if(!bars.length)return;
-  const bi=b%4,bar=Math.floor(b/4)%bars.length,ch=bars[bar],off=Math.max(0,t-c.currentTime),P=S.jam.parts,spb=60/S.jam.bpm;
+  const bpb=J.beats||4,bi=b%bpb,bar=Math.floor(b/bpb)%bars.length,ch=bars[bar],off=Math.max(0,t-c.currentTime),P=S.jam.parts,spb=60/S.jam.bpm;
+  if(bpb===4){
   if(P.chords){let r=55+ch.root;if(r>61)r-=12;const iv=CHQ[ch.q].iv;
     if(bi===0)iv.forEach(x=>pluck(r+x,off,spb*3.6,.085));
     if(bi===2)iv.forEach(x=>pluck(r+x,off,spb*1.6,.05))}
   if(P.bass){let br=36+ch.root;if(br<40)br+=12;if(bi===0)pluck(br,off,spb*1.8,.42);if(bi===2)pluck(br+7,off,spb*1.6,.34)}
   if(P.drums){hit(t,bi%2===0?'kick':'snare');hit(t,'hat');hit(t+spb/2,'hat')}
+  }else{// other meters: bass on 1, chord on the other beats (oom-pah-pah in 3/4)
+  if(P.chords&&bi>0){let r=55+ch.root;if(r>61)r-=12;CHQ[ch.q].iv.forEach(x=>pluck(r+x,off,spb*.9,.06))}
+  if(P.bass&&bi===0){let br=36+ch.root;if(br<40)br+=12;pluck(br,off,spb*(bpb-.2),.42)}
+  if(P.drums){if(bi===0)hit(t,'kick');hit(t,'hat')}
+  }
   if(bi===0)setTimeout(()=>{if(J.on){J.cur=bar;updJamNow()}},off*1000);
 }
 function jamStart(){jamParse();if(!J.bars.length){$('#jamHelp').textContent='Type at least one chord to play.';return}
@@ -1195,10 +1209,20 @@ function improvHTML(bars,k){
   h+=`<p class="small">Aim for: ${uniq.map(c=>`${esc(c.name)} = ${CHQ[c.q].iv.map(x=>nm(c.root+x,parents[0]??tonic)).join(' ')}`).join(' · ')}. Landing on these as each chord arrives is what makes a solo sound like it belongs.</p>`;
   h+=`<p class="small">Guide-tone line (each chord's 3rd or 7th, or 5th for plain triads, moving as little as possible): <b>${guide.map(x=>nm(x,parents[0]??tonic)).join(' → ')}</b>. Play it slowly first, one note each time the chord changes, then decorate around it.</p>`;
   return h+'</div>'}
+function chartHTML(r){const bars=r.bars,b=r.beats;let run=-1,h='';
+  const runs=bars.map((c,i)=>{if(!i||c.name!==bars[i-1].name)run++;return run});
+  const len=i=>{let n=1;while(i+n<bars.length&&runs[i+n]===runs[i])n++;return n};
+  h+=`<p class="small"><b>${bars.length} bar${bars.length>1?'s':''}</b>, ${b} beats in each (${b}/4). Each box is one bar, each dot one beat: count ${[...Array(b)].map((_,i)=>i+1).join('-')} per box. Then go back to the top.</p><div class="chart">`;
+  bars.forEach((c,i)=>{const first=!i||runs[i]!==runs[i-1],n=first?len(i):0;
+    h+=`<div class="bar r${runs[i]%2}${first?'':' cont'}"><span class="bn">${i+1}</span>
+      <b>${first?esc(c.name):'→'}</b>${first&&n>1?`<span class="hold">${n} bars</span>`:''}
+      <span class="beats">${'•'.repeat(b)}</span></div>`});
+  return h+'</div>'}
 let SH_INST=null;
 function shapesHTML(s){const k=parseKey(s.k),r=parseProg(s.prog,k??0);if(!r.bars.length)return'';
   const inst=SH_INST||S.inst,seen=new Set(),uniq=r.bars.filter(c=>!seen.has(c.name)&&seen.add(c.name));
-  return `<div class="chips">${Object.entries(INST).map(([key,v])=>`<button data-shi="${key}" class="${key===inst?'on':''}">${v.n}</button>`).join('')}</div>
+  return `${chartHTML(r)}
+    <div class="chips">${Object.entries(INST).map(([key,v])=>`<button data-shi="${key}" class="${key===inst?'on':''}">${v.n}</button>`).join('')}</div>
     ${k!==null?`<p class="small">In ${KN[k]}: ${r.bars.reduce((g,c)=>{const l=g[g.length-1];if(l&&l.c.name===c.name)l.n++;else g.push({c,n:1});return g},[]).map(g=>roman(g.c,k)+(g.n>1?' ×'+g.n:'')).join(' · ')}</p>`:''}
     <div class="shapes">${uniq.map(c=>shapeFor(inst,c)).join('')}</div>
     ${improvHTML(r.bars,k)}
@@ -1208,8 +1232,11 @@ try{if(!localStorage.getItem('woodshed-fills-1')){const p=S.songs.find(s=>/^peac
   if(p){if(!p.prog)p.prog='Fmaj7 Em7 Dm7 Cmaj7';if(!p.k)p.k='C';if(!p.bpm)p.bpm='90';save()}
   localStorage.setItem('woodshed-fills-1','1')}
   if(!localStorage.getItem('woodshed-fills-2')){const m=S.songs.find(s=>/^my favou?rite things$/i.test(s.t.trim()));
-  if(m){if(!m.prog)m.prog='Em7 Em7 Em7 Em7 Cmaj7 Cmaj7 Cmaj7 Cmaj7 Am7 D7 Gmaj7 Cmaj7 Gmaj7 Cmaj7 F#m7b5 B7';if(!m.k)m.k='Em';save()}
-  localStorage.setItem('woodshed-fills-2','1')}}catch(e){}
+  if(m){if(!m.prog)m.prog='3/4 Em7 Em7 Em7 Em7 Cmaj7 Cmaj7 Cmaj7 Cmaj7 Am7 D7 Gmaj7 Cmaj7 Gmaj7 Cmaj7 F#m7b5 B7';if(!m.k)m.k='Em';save()}
+  localStorage.setItem('woodshed-fills-2','1')}
+  if(!localStorage.getItem('woodshed-fills-3')){const m=S.songs.find(s=>/^my favou?rite things$/i.test(s.t.trim()));
+  if(m&&m.prog==='Em7 Em7 Em7 Em7 Cmaj7 Cmaj7 Cmaj7 Cmaj7 Am7 D7 Gmaj7 Cmaj7 Gmaj7 Cmaj7 F#m7b5 B7'){m.prog='3/4 '+m.prog;save()}
+  localStorage.setItem('woodshed-fills-3','1')}}catch(e){}
 function rSongs(){
   $('#songList').innerHTML=S.songs.map((s,i)=>`<div class="song" data-i="${i}">
     <input class="plain t" data-f="t" value="${esc(s.t)}" aria-label="Song title">
