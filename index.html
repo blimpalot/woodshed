@@ -636,7 +636,15 @@ function vChords(toks){const out=[];
     else if(w==='6')out.push('six')}
   return out}
 // the last answer spoken that is one of the current choices, or null
-function voiceMatch(text,t,pool){const toks=vTokens(text);
+const LETTER={a:9,ay:9,eh:9,b:11,be:11,bee:11,c:0,see:0,sea:0,d:2,dee:2,e:4,f:5,ef:5,eff:5,g:7,gee:7};
+// a note name said on its own ("B flat", "E", "F sharp"), as a pitch class
+function noteName(text){const s=String(text).toLowerCase().replace(/[-,.!?]/g,' ').replace(/\b(the|it's|its|it is|is|note|um|uh)\b/g,' ').trim().replace(/\s+/g,' ');
+  let m=s.match(/^([a-g])([b♭#♯])$/);if(m)return mod(LETTER[m[1]]+(/[b♭]/.test(m[2])?-1:1));
+  m=s.match(/^([a-z]+)(?: (flat|sharp|♭|♯))?$/);if(!m||LETTER[m[1]]===undefined)return null;
+  return mod(LETTER[m[1]]+(m[2]==='flat'||m[2]==='♭'?-1:m[2]?1:0))}
+function voiceMatch(text,t,pool,k){
+  if(t==='deg'&&k!==undefined){const pc=noteName(text);if(pc!==null){const a=String(mod(pc-k));return pool.includes(a)?a:null}}
+  const toks=vTokens(text);
   const c=t==='chord'?vChords(toks):vSemis(toks).map(v=>String(t==='deg'?mod(v):v));
   for(let i=c.length-1;i>=0;i--)if(pool.includes(c[i]))return c[i];
   return null}
@@ -734,8 +742,11 @@ function hfListen(c,tries){tries=tries||0;
   const judge=alts=>{
     if(D.on&&D.paused){if(vCmd(alts[0])==='resume'){voiceMsg('Heard: <q>'+esc(alts[0])+'</q>. Resuming.');drillResume()}
       else{HF.hold=true;voiceMsg('Paused. Say "resume" or tap Resume.')}return}
+    if(c.via==='play'){const cmd=vCmd(alts[0]);if(D.on&&drillCmd(cmd))return;
+      if(cmd==='rep'){voiceMsg('Heard: <q>'+esc(alts[0])+'</q>. Playing it again.');earPlay();hfSchedule();return}
+      HF.hold=true;voiceMsg('🎹 This round is played: answer on the keys.');return}
     const pool=earPool().map(o=>o.a);
-    for(const t of alts){const a=voiceMatch(t,c.t,pool);if(a){voiceMsg('Heard: <q>'+esc(t)+'</q>');earAnswer(a);return}}
+    for(const t of alts){const a=voiceMatch(t,c.t,pool,c.k);if(a){voiceMsg('Heard: <q>'+esc(t)+'</q>');earAnswer(a);return}}
     const cmd=vCmd(alts[0]);
     if(D.on&&drillCmd(cmd)){hfLog('drill command: '+cmd);return}
     if(cmd==='rep'){voiceMsg('Heard: <q>'+esc(alts[0])+'</q>. Playing it again.');earPlay();hfSchedule();return}
@@ -833,26 +844,35 @@ function drillPlan(){const L=DS.lv;return[
   {name:'Chords',t:'chord',L:L.chord,n:8,lvl:true},
   {name:'Weak spots',t:'weak',n:6}]}
 const NUMW=['zero','one','two','three','four','five','six','seven','eight','nine','ten'];
-function drillQ(t,L,forced){
+function drillQ(t,L,forced,via){
   S.ear.type=t;S.ear.level=L;const k=+$('#earKey').value,P=POOLS[t][L];
   let a=forced;if(a===undefined){const opts=P.filter(x=>String(x)!==D.lastA);a=pick(opts.length?opts:P)}
   D.lastA=String(a);
   if(t==='deg'){const s=+a,root=48+k;E.cur={t,s:String(s),n:s,k,root,m:root+s+(Math.random()<.35?12:0)};E.t0=performance.now()+3200}
   else if(t==='int'){const s=+a;E.cur={t,s:String(s),n:s,lo:45+Math.floor(Math.random()*12)};E.t0=performance.now()+800}
   else{E.cur={t,s:String(a),r:48+Math.floor(Math.random()*12)};E.t0=performance.now()+1000}
-  E.cur.ans=false;E.cur.drill=true;MK.echo=[];MK.anchor=null;MK.buf=[];earPlay();rEar();
-  const fb=$('#earFb');fb.className='fbk';fb.textContent=HF.on?'Sing it, then say it.':'Sing it, then tap it.';
+  E.cur.ans=false;E.cur.drill=true;E.cur.via=via;MK.echo=[];MK.anchor=null;MK.buf=[];earPlay();rEar();
+  const fb=$('#earFb');fb.className='fbk';fb.textContent=via==='play'?'Sing it, then play it on the keys.':via==='say'?'Sing it, then say it.':'Sing it, then tap it.';
   hfSchedule()}
 function drillStep(){clearTimeout(D.adv);if(!D.on||D.paused)return;
   if(!earOn()){drillPause();return}
   const set=D.sets[D.si];if(D.ri>=set.n){drillSetEnd();return}
   D.ri++;
-  if(set.t==='weak'){const [t,a]=D.q[D.ri-1].split(':'),L=[1,2,3].find(l=>POOLS[t][l].map(String).includes(a))||3;drillQ(t,L,a)}
-  else drillQ(set.t,set.L);
-  rDrill()}
+  const via=set.mode==='both'?(D.ri<=set.sayN?'say':'play'):set.mode;
+  const ask=()=>{if(!D.on||D.paused)return;
+    if(set.t==='weak'){const [t,a]=D.q[D.ri-1].split(':'),L=[1,2,3].find(l=>POOLS[t][l].map(String).includes(a))||3;drillQ(t,L,a,via)}
+    else drillQ(set.t,set.L,undefined,via);
+    rDrill()};
+  // halfway through a set: switch from saying to playing
+  if(set.mode==='both'&&D.ri===set.sayN+1){hfStop();voiceMsg('🎹 Now play them on the keys.');rDrill();say('Now play them on the keys.',()=>{D.adv=setTimeout(ask,400)});return}
+  ask()}
+const midiReady=()=>MK.on&&MK.access&&[...MK.access.inputs.values()].some(i=>i.state!=='disconnected');
 function drillSetIntro(prefix){const set=D.sets[D.si];D.ri=0;D.sr=0;D.sn=0;D.sms=[];
+  const v=HF.on,m=midiReady();set.mode=v&&m?'both':v?'say':m?'play':'tap';
+  set.sayN=set.mode==='both'?Math.ceil(set.n/2):set.mode==='say'?set.n:0;
+  const how=set.mode==='both'?` Say the first ${NUMW[set.sayN]}, then play ${NUMW[set.n-set.sayN]}.`:set.mode==='play'?' Play them on the keys.':'';
   if(set.t==='weak')D.q=weakItems(set.n);
-  const txt=(prefix||'')+`Set ${D.si+1} of ${D.sets.length}. ${set.name}${set.L&&set.t!=='weak'&&set.name!=='Warm-up'?', '+LVN[set.L]:set.name==='Warm-up'?'. Degrees, easy':''}. ${(NUMW[set.n]||String(set.n)).replace(/^./,x=>x.toUpperCase())} reps.`;
+  const txt=(prefix||'')+`Set ${D.si+1} of ${D.sets.length}. ${set.name}${set.L&&set.t!=='weak'&&set.name!=='Warm-up'?', '+LVN[set.L]:set.name==='Warm-up'?'. Degrees, easy':''}. ${(NUMW[set.n]||String(set.n)).replace(/^./,x=>x.toUpperCase())} reps.${how}`;
   voiceMsg(esc(txt));rDrill();hfStop();
   say(txt,()=>{if(D.on&&!D.paused)D.adv=setTimeout(drillStep,700)})}
 function drillSetEnd(){const set=D.sets[D.si];let note='';
@@ -900,13 +920,13 @@ function rDrill(){const tot=D.on?D.sets.reduce((a,s)=>a+s.n,0):0;
   $('#drEnd').style.display=D.on?'':'none';
   ['#earType','#earLvl','#earNew'].forEach(x=>{$(x).style.display=D.on?'none':''});
   if(D.on){const set=D.sets[D.si]||D.sets[D.sets.length-1],done=D.sets.slice(0,D.si).reduce((a,s)=>a+s.n,0)+D.ri;
-    $('#drInfo').textContent=`Set ${Math.min(D.si+1,D.sets.length)} of ${D.sets.length}: ${set.name}${set.lvl?' ('+LVN[set.L]+')':''} · rep ${D.ri} of ${set.n} · ${D.right}/${D.total} right${D.paused?' · paused':''}`;
+    $('#drInfo').textContent=`Set ${Math.min(D.si+1,D.sets.length)} of ${D.sets.length}: ${set.name}${set.lvl?' ('+LVN[set.L]+')':''} · rep ${D.ri} of ${set.n}${E.cur&&E.cur.drill&&E.cur.via==='play'?' · 🎹 play':E.cur&&E.cur.drill&&E.cur.via==='say'?' · 🗣 say':''} · ${D.right}/${D.total} right${D.paused?' · paused':''}`;
     $('#drBar').style.width=Math.round(done/tot*100)+'%';return}
   $('#drBar').style.width=DS.last&&DS.last.d===today()?'100%':'0';
   const L=DS.lv;
   $('#drInfo').innerHTML=DS.last&&DS.last.d===today()
     ?`Done today: <b>${DS.last.r}/${DS.last.t}</b> ✓${DS.last.ch&&DS.last.ch.length?' · '+esc(DS.last.ch.join(', ')):''}. Run it again any time.`
-    :`Warm-up · Degrees (${LVN[L.deg]}) · Intervals (${LVN[L.int]}) · Chords (${LVN[L.chord]}) · Weak spots. Levels adjust as you improve. Say "pause", "repeat", "skip" or "next set" any time.`}
+    :`Warm-up · Degrees (${LVN[L.deg]}) · Intervals (${LVN[L.int]}) · Chords (${LVN[L.chord]}) · Weak spots. Levels adjust as you improve. Say "pause", "repeat", "skip" or "next set" any time. With voice and a MIDI keyboard both on, each set is said, then played.`}
 $('#drGo').onclick=()=>{if(!D.on)drillStart();else if(D.paused)drillResume();else drillPause()};
 $('#drEnd').onclick=drillEnd;
 $('#earType').addEventListener('click',drillEnd);$('#earLvl').addEventListener('click',drillEnd);
@@ -935,6 +955,7 @@ function midiIn(e){const [st,n,v]=e.data,cmd=st&0xF0;
     $('#earFb').className='fbk';$('#earFb').textContent='Played: '+MK.echo.map(x=>pcName(x,c.k)).join('  ');
     if(MK.echo.length>=c.notes.length){MIC.notes=MK.echo;MK.echo=[];micJudge()}return}
   if(c.ans)return;
+  if(c.via==='say'){midiMsg('🗣 This round is said out loud. The keys just sound.');return}
   if(c.t==='deg'){midiAnswer(String(mod(n-c.root)));return}
   if(c.t==='int'){const now=performance.now();
     if(MK.anchor===null||now-MK.anchorT>4000||n===MK.anchor){MK.anchor=n;MK.anchorT=now;midiMsg(`🎹 From ${dual(n)}… now the top note.`);return}
