@@ -71,6 +71,7 @@ ol.blocks li.done::before{color:var(--accent)}
 .grid button.no{background:var(--bad);color:#fff;border-color:transparent}
 .fbk{min-height:3.2em;font-size:17px;margin:4px 0}
 .fbk.ok{color:var(--good)}.fbk.no{color:var(--bad)}
+#earMidiMsg{margin:0}#earMidiMsg:empty{display:none}#earMidiMsg.no{color:var(--bad)}
 #earVoice{margin:0;min-height:1.4em}#earVoice:empty{display:none}#earVoice.no{color:var(--bad)}.improv{margin:10px 0;padding:10px 12px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 10px 10px 0}.improv p{margin:4px 0}.improv button{margin-top:6px;padding:6px 12px;font-size:15px}
 .chart{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:6px 0 10px}
 .chart .bar{position:relative;border:1px solid var(--line);border-radius:8px;padding:16px 4px 6px;text-align:center;min-height:64px;display:flex;flex-direction:column;align-items:center;gap:2px}
@@ -198,6 +199,8 @@ label.wide input{width:100%}
     <button class="ghost" id="earMic">Check with mic</button>
     <button class="ghost" id="earDrone">Start drone</button>
   </div>
+  <label class="check" id="earMidiRow"><input type="checkbox" id="earMidi"> MIDI keyboard: play your answers</label>
+  <p class="small" id="earMidiMsg"></p>
   <label class="check" id="earHfRow"><input type="checkbox" id="earHf"> Hands-free: say your answer out loud</label>
   <div class="row" id="earVoiceRow"><label class="sel">Voice <select id="earVoicePick"></select></label>
     <label class="check"><input type="checkbox" id="earLocal"> On-device recognition (test)</label></div>
@@ -467,7 +470,7 @@ function rEar(){
   $('#earSlow').style.display=t==='echo'?'':'none';
   $('#earMic').style.display=t==='echo'&&!MIC.blocked?'':'none';
   $('#earHfRow').style.display=t==='echo'?'none':'';$('#earVoiceRow').style.display=$('#hfLogBox').style.display=t==='echo'||!HF.on?'none':'';if(HF.on)fillVoices();$('#earHf').checked=HF.on;$('#earLocal').checked=!!HF.local;
-  if(typeof rDrill==='function')rDrill();
+  if(typeof rDrill==='function')rDrill();if(typeof midiStatus==='function'&&MK.on)midiStatus();
   $('#earNew').textContent=t==='echo'?'New phrase':t==='chord'?'New chord':'New note';
   $('#earAns').style.gridTemplateColumns=t==='echo'?'repeat(3,1fr)':'';
   $('#earAns').innerHTML=earPool().map(o=>`<button data-a="${o.a}">${o.l}</button>`).join('');
@@ -542,7 +545,7 @@ function earNew(){
     let i=L===1?0:Math.floor(Math.random()*sc.length);const notes=[];
     for(let j=0;j<n;j++){notes.push(ext[i]);i=Math.max(0,Math.min(ext.length-1,i+pick([-2,-1,-1,1,1,2])))}
     E.cur={t,k,root:48+k,notes}}
-  E.cur.ans=false;earPlay();rEar();
+  E.cur.ans=false;if(typeof MK!=='undefined'){MK.echo=[];MK.anchor=null;MK.buf=[]}earPlay();rEar();
   const fb=$('#earFb');fb.className='fbk';
   fb.textContent=t==='echo'?'Play it back on your instrument. The first note is the home note of the key.':HF.on?'Sing it, then say it.':'Sing it, then tap it.';
   hfSchedule();
@@ -837,7 +840,7 @@ function drillQ(t,L,forced){
   if(t==='deg'){const s=+a,root=48+k;E.cur={t,s:String(s),n:s,k,root,m:root+s+(Math.random()<.35?12:0)};E.t0=performance.now()+3200}
   else if(t==='int'){const s=+a;E.cur={t,s:String(s),n:s,lo:45+Math.floor(Math.random()*12)};E.t0=performance.now()+800}
   else{E.cur={t,s:String(a),r:48+Math.floor(Math.random()*12)};E.t0=performance.now()+1000}
-  E.cur.ans=false;E.cur.drill=true;earPlay();rEar();
+  E.cur.ans=false;E.cur.drill=true;MK.echo=[];MK.anchor=null;MK.buf=[];earPlay();rEar();
   const fb=$('#earFb');fb.className='fbk';fb.textContent=HF.on?'Sing it, then say it.':'Sing it, then tap it.';
   hfSchedule()}
 function drillStep(){clearTimeout(D.adv);if(!D.on||D.paused)return;
@@ -908,6 +911,47 @@ $('#drGo').onclick=()=>{if(!D.on)drillStart();else if(D.paused)drillResume();els
 $('#drEnd').onclick=drillEnd;
 $('#earType').addEventListener('click',drillEnd);$('#earLvl').addEventListener('click',drillEnd);
 $('#tabs').addEventListener('click',()=>{if(D.on&&!earOn()){drillPause()}});
+/* ---------- MIDI keyboard: answer the Ear quizzes by playing ---------- */
+const MIDI_KEY='woodshed-midi';
+var MK={on:false,access:null,held:new Set(),buf:[],timer:null,anchor:null,anchorT:0,echo:[]};
+function midiMsg(t,bad){const el=$('#earMidiMsg');el.className='small'+(bad?' no':'');el.textContent=t}
+function midiHint(){const t=S.ear.type;return t==='deg'?'Play the note you heard, any octave.':t==='int'?'Play any note, then the note that interval above it (or both together).':t==='chord'?'Play the chord: any key, any inversion.':'Play the phrase back.'}
+function midiStatus(){if(!MK.on){midiMsg('');return}
+  const ins=MK.access?[...MK.access.inputs.values()].filter(i=>i.state!=='disconnected'):[];
+  midiMsg(ins.length?`🎹 ${ins.map(i=>i.name).join(', ')}. ${midiHint()}`:'No MIDI keyboard found. Plug it in (USB) and it will connect.',!ins.length)}
+function midiBind(){if(!MK.access)return;MK.access.inputs.forEach(i=>{i.onmidimessage=midiIn});midiStatus()}
+async function midiEnable(){
+  if(!navigator.requestMIDIAccess){midiSet(false);midiMsg("This browser can't use MIDI keyboards. Use Chrome (on a Mac, PC or Android).",true);return}
+  try{MK.access=await navigator.requestMIDIAccess();MK.access.onstatechange=midiBind;midiSet(true);midiBind()}
+  catch(e){midiSet(false);midiMsg('MIDI access was blocked. Allow it for this site (the icon in the address bar), then try again.',true)}}
+function midiSet(on){MK.on=on;$('#earMidi').checked=on;try{localStorage.setItem(MIDI_KEY,on?'1':'')}catch(e){}
+  if(!on&&MK.access)MK.access.inputs.forEach(i=>{i.onmidimessage=null});midiStatus()}
+function midiIn(e){const [st,n,v]=e.data,cmd=st&0xF0;
+  if(cmd===0x80||(cmd===0x90&&!v)){MK.held.delete(n);return}
+  if(cmd!==0x90)return;
+  MK.held.add(n);pluck(n,0,1.2,.25);  // most controllers are silent, so sound the key
+  const c=E.cur;if(!MK.on||!c||!earOn())return;
+  if(c.t==='echo'){if(c.ans||(MIC.iv||MIC.wait))return;MK.echo.push(mod(n));
+    $('#earFb').className='fbk';$('#earFb').textContent='Played: '+MK.echo.map(x=>pcName(x,c.k)).join('  ');
+    if(MK.echo.length>=c.notes.length){MIC.notes=MK.echo;MK.echo=[];micJudge()}return}
+  if(c.ans)return;
+  if(c.t==='deg'){midiAnswer(String(mod(n-c.root)));return}
+  if(c.t==='int'){const now=performance.now();
+    if(MK.anchor===null||now-MK.anchorT>4000||n===MK.anchor){MK.anchor=n;MK.anchorT=now;midiMsg(`🎹 From ${dual(n)}… now the top note.`);return}
+    let d=Math.abs(n-MK.anchor);d=d%12||12;MK.anchor=null;midiAnswer(String(d));return}
+  // chords: gather what's played within a moment, then work out the chord type from it
+  MK.buf.push(n);clearTimeout(MK.timer);MK.timer=setTimeout(()=>{const ns=MK.buf;MK.buf=[];midiChord(ns)},350)}
+function midiChord(ns){const c=E.cur;if(!c||c.ans||c.t!=='chord')return;
+  const pcs=[...new Set(ns.map(mod))],low=mod(Math.min(...ns)),pool=earPool().map(o=>o.a);
+  // try the lowest note as the root first, then each other note (inversions); prefer the quiz's choices
+  const shape=r=>pcs.map(p=>mod(p-r)).sort((x,y)=>x-y).join(','),is=(k,r)=>CHQ[k].iv.map(x=>x%12).sort((x,y)=>x-y).join(',')===shape(r);
+  const roots=[low,...pcs.filter(p=>p!==low)];
+  for(const keys of [pool,Object.keys(CHQ)])for(const r of roots){const q=keys.find(k=>CHQ[k]&&is(k,r));if(q){midiAnswer(q);return}}
+  midiMsg(`🎹 Heard ${pcs.map(p=>pcName(p,0)).join(' ')}, which isn't one of these chords. Try again.`,true)}
+function midiAnswer(a){const c=E.cur;hfLog('MIDI answer: '+a);earAnswer(a);
+  midiMsg(`🎹 Played ${c.t==='deg'?DEGL[+a]:c.t==='int'?INTL[+a]:CHQ[a].n}. ${midiHint()}`)}
+$('#earMidi').onchange=e=>{if(e.target.checked)midiEnable();else midiSet(false)};
+try{if(localStorage.getItem(MIDI_KEY)==='1'&&navigator.requestMIDIAccess)setTimeout(midiEnable,0)}catch(e){}
 /* ---------- fretboard ---------- */
 let F={cur:null,t0:0,prev:null,listen:false,show:null};
 function fbStrings(){const o=INST[S.inst].open;if(S.fb.string==='all')return o.map((_,i)=>i);if(S.fb.string==='week')return[focus().str];return[+S.fb.string]}
@@ -1060,13 +1104,13 @@ function jamBeat(b,t){
   const c=A(),bars=J.bars;if(!bars.length)return;
   const bpb=J.beats||4,bi=b%bpb,bar=Math.floor(b/bpb)%bars.length,ch=bars[bar],off=Math.max(0,t-c.currentTime),P=S.jam.parts,spb=60/S.jam.bpm;
   if(bpb===4){
-  if(P.chords){let r=55+ch.root;if(r>61)r-=12;const iv=CHQ[ch.q].iv;
+  if(P.chords){let r=50+mod(ch.root-2);const iv=CHQ[ch.q].iv;
     if(bi===0)iv.forEach(x=>pluck(r+x,off,spb*3.6,.085));
     if(bi===2)iv.forEach(x=>pluck(r+x,off,spb*1.6,.05))}
   if(P.bass){let br=36+ch.root;if(br<40)br+=12;if(bi===0)pluck(br,off,spb*1.8,.42);if(bi===2)pluck(br+7,off,spb*1.6,.34)}
   if(P.drums){hit(t,bi%2===0?'kick':'snare');hit(t,'hat');hit(t+spb/2,'hat')}
   }else{// other meters: bass on 1, chord on the other beats (oom-pah-pah in 3/4)
-  if(P.chords&&bi>0){let r=55+ch.root;if(r>61)r-=12;CHQ[ch.q].iv.forEach(x=>pluck(r+x,off,spb*.9,.06))}
+  if(P.chords&&bi>0){let r=50+mod(ch.root-2);CHQ[ch.q].iv.forEach(x=>pluck(r+x,off,spb*.9,.06))}
   if(P.bass&&bi===0){let br=36+ch.root;if(br<40)br+=12;pluck(br,off,spb*(bpb-.2),.42)}
   if(P.drums){if(bi===0)hit(t,'kick');hit(t,'hat')}
   }
@@ -1262,6 +1306,39 @@ try{if(!localStorage.getItem('woodshed-fills-1')){const p=S.songs.find(s=>/^peac
   if(!localStorage.getItem('woodshed-fills-3')){const m=S.songs.find(s=>/^my favou?rite things$/i.test(s.t.trim()));
   if(m&&m.prog==='Em7 Em7 Em7 Em7 Cmaj7 Cmaj7 Cmaj7 Cmaj7 Am7 D7 Gmaj7 Cmaj7 Gmaj7 Cmaj7 F#m7b5 B7'){m.prog='3/4 '+m.prog;save()}
   localStorage.setItem('woodshed-fills-3','1')}}catch(e){}
+/* ---------- MIDI export: a song's chart as a .mid file for Logic or any DAW ---------- */
+// Standard MIDI file, type 1: a tempo track plus Chords, Bass and Drums, playing the chart PASSES times
+function midiFile(r,bpm,title){
+  const PPQ=480,b=r.beats,passes=4,vlq=n=>{const o=[n&127];while(n>>=7)o.unshift((n&127)|128);return o},
+    txt=s=>[...new TextEncoder().encode(s)];
+  const track=(name,ev,ch,prog)=>{ev.sort((x,y)=>x.t-y.t||x.on-y.on);let last=0;
+    const out=[0,0xFF,0x03,...vlq(txt(name).length),...txt(name)];
+    if(prog!==undefined)out.push(0,0xC0|ch,prog);
+    ev.forEach(e=>{out.push(...vlq(e.t-last));last=e.t;out.push(...e.d)});
+    out.push(0,0xFF,0x2F,0);return[0x4D,0x54,0x72,0x6B,out.length>>>24,(out.length>>16)&255,(out.length>>8)&255,out.length&255,...out]};
+  const note=(ev,ch,n,t,len,vel)=>{ev.push({t,on:1,d:[0x90|ch,n,vel]});ev.push({t:t+len,on:0,d:[0x80|ch,n,0]})};
+  const C=[],B=[],D=[];let t=0;
+  for(let p=0;p<passes;p++)r.bars.forEach(c=>{const iv=CHQ[c.q].iv;let cr=50+mod(c.root-2);let br=36+c.root;if(br<40)br+=12;
+    if(b===4){// same groove as the Jam tab: chords on 1 and 3, bass root on 1 and fifth on 3, kick-snare with eighth-note hats
+      iv.forEach(x=>{note(C,0,cr+x,t,PPQ*2-20,72);note(C,0,cr+x,t+PPQ*2,PPQ*2-20,56)});
+      note(B,1,br,t,PPQ*2-20,96);note(B,1,br+7,t+PPQ*2,PPQ*2-20,84);
+      for(let i=0;i<4;i++){note(D,9,i%2?38:36,t+i*PPQ,PPQ/4,i%2?90:100);note(D,9,42,t+i*PPQ,PPQ/4,70);note(D,9,42,t+i*PPQ+PPQ/2,PPQ/4,55)}
+    }else{// waltz and other meters: bass on 1, chord on the other beats
+      note(B,1,br,t,PPQ*b-20,96);
+      for(let i=1;i<b;i++)iv.forEach(x=>note(C,0,cr+x,t+i*PPQ,PPQ-40,i===1?66:58));
+      for(let i=0;i<b;i++){if(!i)note(D,9,36,t,PPQ/4,100);note(D,9,42,t+i*PPQ,PPQ/4,i?55:70)}
+    }
+    t+=PPQ*b});
+  const us=Math.round(60000000/bpm),tempo=[0,0xFF,0x03,...vlq(txt(title).length),...txt(title),
+    0,0xFF,0x51,3,(us>>16)&255,(us>>8)&255,us&255, 0,0xFF,0x58,4,b,2,24,8, 0,0xFF,0x2F,0];
+  const head=[0x4D,0x54,0x68,0x64,0,0,0,6,0,1,0,4,PPQ>>8,PPQ&255];
+  return new Uint8Array([...head,0x4D,0x54,0x72,0x6B,0,0,(tempo.length>>8)&255,tempo.length&255,...tempo,
+    ...track('Chords',C,0,0),...track('Bass',B,1,32),...track('Drums',D,9)])}
+function exportMidi(s){const k=parseKey(s.k),r=parseProg(s.prog,k??0);if(!r.bars.length)return false;
+  const bpm=Math.min(300,Math.max(30,parseInt(s.bpm)||S.jam.bpm||90));
+  const url=URL.createObjectURL(new Blob([midiFile(r,bpm,s.t||'Song')],{type:'audio/midi'})),a=document.createElement('a');
+  a.href=url;a.download=(s.t||'song').replace(/[^\w\- ]+/g,'').trim().replace(/\s+/g,'-')+'.mid';document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);return true}
 function rSongs(){
   $('#songList').innerHTML=S.songs.map((s,i)=>`<div class="song" data-i="${i}">
     <input class="plain t" data-f="t" value="${esc(s.t)}" aria-label="Song title">
@@ -1270,13 +1347,15 @@ function rSongs(){
     <div class="meta"><label class="sel">Key<input data-f="k" value="${esc(s.k)}" placeholder="e.g. A"></label>
     <label class="sel">Target bpm<input data-f="bpm" inputmode="numeric" value="${esc(s.bpm)}" placeholder="e.g. 120"></label>
     <label class="sel wide">Chords<input data-f="prog" value="${esc(s.prog||'')}" placeholder="G D Em C  or  I V vi IV" autocapitalize="off" spellcheck="false"></label>
-    <button class="ghost" data-jam="${s.id}">Jam on it</button><button class="ghost" data-del="${i}">Remove</button></div>
+    <button class="ghost" data-jam="${s.id}">Jam on it</button><button class="ghost" data-midi="${i}">Export MIDI</button><button class="ghost" data-del="${i}">Remove</button></div>
     <div class="shp">${shapesHTML(s)}</div></div>`).join('')||'<p class="lede">No songs yet. Add the first one.</p>';
 }
 $('#songList').addEventListener('input',e=>{const el=e.target,card=el.closest('.song');if(!card||!el.dataset.f)return;S.songs[+card.dataset.i][el.dataset.f]=el.value;save();
   if(el.dataset.f==='prog'||el.dataset.f==='k')card.querySelector('.shp').innerHTML=shapesHTML(S.songs[+card.dataset.i])});
 $('#songList').addEventListener('change',e=>{const el=e.target,card=el.closest('.song');if(!card||el.dataset.st===undefined)return;S.songs[+card.dataset.i].st[+el.dataset.st]=el.checked;save()});
-$('#songList').addEventListener('click',e=>{const st=e.target.closest('button[data-sty]');if(st){SH_STYLE=st.dataset.sty;document.querySelectorAll('#songList .song').forEach(c=>{c.querySelector('.shp').innerHTML=shapesHTML(S.songs[+c.dataset.i])});return}
+$('#songList').addEventListener('click',e=>{const mx=e.target.closest('button[data-midi]');
+  if(mx){if(!exportMidi(S.songs[+mx.dataset.midi]))alert('Add some chords to this song first.');return}
+  const st=e.target.closest('button[data-sty]');if(st){SH_STYLE=st.dataset.sty;document.querySelectorAll('#songList .song').forEach(c=>{c.querySelector('.shp').innerHTML=shapesHTML(S.songs[+c.dataset.i])});return}
   const pr=e.target.closest('button[data-practice]');
   if(pr){const [k,mn]=pr.dataset.practice.split(':'),m=MODES.findIndex(x=>x.n===mn);S.ov={w:focus().w,k:+k,m};save();if(drone)startDrone(focus().k);$('#earKey').value=focus().k;show('today');return}
   const si=e.target.closest('button[data-shi]');if(si){SH_INST=si.dataset.shi;document.querySelectorAll('#songList .song').forEach(c=>{c.querySelector('.shp').innerHTML=shapesHTML(S.songs[+c.dataset.i])});return}
