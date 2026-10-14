@@ -71,6 +71,9 @@ ol.blocks li.done::before{color:var(--accent)}
 .grid button.no{background:var(--bad);color:#fff;border-color:transparent}
 .fbk{min-height:3.2em;font-size:17px;margin:4px 0}
 .fbk.ok{color:var(--good)}.fbk.no{color:var(--bad)}
+#earType{display:flex;max-width:100%}#earType button{flex:1 1 auto;padding:8px 4px;font-size:14px}
+#hookLine{margin:8px 0 0;line-height:1.9}#hookLine:empty{display:none}#hookLine span{display:inline-block;min-width:2.2em;text-align:center;border-bottom:2px solid var(--line);margin-right:2px}
+#hookLine span.ok{border-color:var(--good)}#hookLine span.no{border-color:var(--bad)}#hookLine span.cur{border-color:var(--accent);font-weight:700}#hookLine small{color:var(--muted)}
 #earMidiMsg{margin:0}#earMidiMsg:empty{display:none}#earMidiMsg.no{color:var(--bad)}
 #earVoice{margin:0;min-height:1.4em}#earVoice:empty{display:none}#earVoice.no{color:var(--bad)}.improv{margin:10px 0;padding:10px 12px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 10px 10px 0}.improv p{margin:4px 0}.improv button{margin-top:6px;padding:6px 12px;font-size:15px}
 .chart{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:6px 0 10px}
@@ -79,6 +82,7 @@ ol.blocks li.done::before{color:var(--accent)}
 .chart .bar b{font-size:16px;line-height:1.1}.chart .cont b{color:var(--muted);font-weight:400}
 .chart .bn{position:absolute;top:2px;left:6px;font-size:11px;color:var(--muted)}
 .chart .hold{font-size:11px;color:var(--muted)}.chart .beats{font-size:12px;letter-spacing:3px;color:var(--muted);margin-top:auto}
+.hookrow{margin:12px 0 4px}.hookrow .line{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.hookrow .small{margin:6px 0 0}
 .shapes{display:flex;flex-wrap:wrap;gap:4px 10px;margin:6px 0}.shapes svg{display:block}.shp .chips{margin-top:12px}
 .drill{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:12px 14px;margin:6px 0 16px}
 .drill .dh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:19px}.drill .dh span{font-size:14px;color:var(--muted)}
@@ -191,7 +195,7 @@ label.wide input{width:100%}
     <p class="small" id="drInfo"></p><div class="dbar"><span id="drBar"></span></div>
     <div class="line"><button class="btn" id="drGo">Start daily drill</button><button class="ghost" id="drEnd">End drill</button></div></div>
   <div>
-    <div class="seg" id="earType"><button data-v="deg">Degrees</button><button data-v="int">Intervals</button><button data-v="chord">Chords</button><button data-v="echo">Echo</button></div>
+    <div class="seg" id="earType"><button data-v="deg">Degrees</button><button data-v="int">Intervals</button><button data-v="chord">Chords</button><button data-v="echo">Echo</button><button data-v="hook">Hooks</button></div>
     <div class="seg" id="earLvl"><button data-v="1">Easy</button><button data-v="2">Medium</button><button data-v="3">Full</button></div>
   </div>
   <div class="row" id="earKeyRow"><label class="sel">Key <select id="earKey"></select></label></div>
@@ -207,6 +211,7 @@ label.wide input{width:100%}
   <label class="check" id="earHfRow"><input type="checkbox" id="earHf"> Hands-free: say your answer out loud</label>
   <div class="row" id="earVoiceRow"><label class="sel">Voice <select id="earVoicePick"></select></label>
     <label class="check"><input type="checkbox" id="earLocal"> On-device recognition (test)</label></div>
+  <p class="small" id="hookLine"></p>
   <div class="grid" id="earAns"></div>
   <p class="small" id="earVoice" aria-live="polite"></p>
   <details id="hfLogBox" class="small"><summary>Voice log (for troubleshooting)</summary><button class="ghost" id="hfCopy">Copy log</button><pre id="hfLog"></pre></details>
@@ -494,6 +499,7 @@ KN.forEach((n,i)=>$('#earKey').add(new Option(n,i)));
 $('#earKey').value=focus().k;
 function earPool(){const t=S.ear.type,L=S.ear.level;
   if(t==='deg')return DEG_POOLS[L].map(s=>({a:String(s),l:DEGL[s]}));
+  if(t==='hook')return DEG_POOLS[3].map(s=>({a:String(s),l:DEGL[s]}));
   if(t==='int')return INT_POOLS[L].map(s=>({a:String(s),l:INTL[s]}));
   if(t==='chord')return CH_POOLS[L].map(q=>({a:q,l:CHQ[q].n}));
   return[{a:'show',l:'Show notes'},{a:'got',l:'Got it'},{a:'miss',l:'Missed'}]}
@@ -501,12 +507,12 @@ function rEar(){
   const t=S.ear.type;
   document.querySelectorAll('#earType button').forEach(b=>b.classList.toggle('on',b.dataset.v===t));
   document.querySelectorAll('#earLvl button').forEach(b=>b.classList.toggle('on',+b.dataset.v===S.ear.level));
-  $('#earKeyRow').style.display=(t==='deg'||t==='echo')?'flex':'none';
+  $('#earKeyRow').style.display=(t==='deg'||t==='echo'||t==='hook')?'flex':'none';if(typeof hookLine==='function')hookLine();
   $('#earSlow').style.display=t==='echo'?'':'none';
   $('#earMic').style.display=t==='echo'&&!MIC.blocked?'':'none';
   $('#earHfRow').style.display=t==='echo'?'none':'';$('#earVoiceRow').style.display=$('#hfLogBox').style.display=t==='echo'||!HF.on?'none':'';if(HF.on)fillVoices();$('#earHf').checked=HF.on;$('#earLocal').checked=!!HF.local;
   if(typeof rDrill==='function')rDrill();if(typeof midiStatus==='function'&&MK.on)midiStatus();
-  $('#earNew').textContent=t==='echo'?'New phrase':t==='chord'?'New chord':'New note';
+  $('#earNew').textContent=t==='hook'?'New hook':t==='echo'?'New phrase':t==='chord'?'New chord':'New note';
   $('#earAns').style.gridTemplateColumns=t==='echo'?'repeat(3,1fr)':'';
   $('#earAns').innerHTML=earPool().map(o=>`<button data-a="${o.a}">${o.l}</button>`).join('');
   const st=S.earStats.filter(x=>x.t===t).slice(-30),ok=st.filter(x=>x.ok);
@@ -514,6 +520,7 @@ function rEar(){
 }
 function earPlay(slow){
   const c=E.cur;if(!c)return;
+  if(c.hook){hookMelody(0,c.ans?undefined:c.hi+1);return}  // replay: the hook up to the note being asked
   if(c.t==='deg'){playCad(c.root);pluck(c.m,3.2,1.6,.3)}
   else if(c.t==='int'){pluck(c.lo,0,1.4,.28);pluck(c.lo+c.n,.8,1.4,.28)}
   else if(c.t==='chord'){const iv=CHQ[c.s].iv;iv.forEach((x,j)=>pluck(c.r+x,j*.2,1.8,.2));chord(iv.map(x=>c.r+x),1.0,1.6)}
@@ -572,6 +579,7 @@ function micJudge(){
 }
 const echoText=c=>c.notes.map(d=>pcName(c.root+d,c.k)).join('  ')+'   ('+c.notes.map(d=>DEGL[mod(d)]).join(' ')+')';
 function earNew(){
+  if(S.ear.type==='hook'){hookNew();return}
   const t=S.ear.type,L=S.ear.level,k=+$('#earKey').value;
   if(t==='deg'){const s=pick(DEG_POOLS[L]),root=48+k;E.cur={t,s:String(s),n:s,k,root,m:root+s+(Math.random()<.35?12:0)};E.t0=performance.now()+3200}
   else if(t==='int'){const s=pick(INT_POOLS[L]);E.cur={t,s:String(s),n:s,lo:45+Math.floor(Math.random()*12)};E.t0=performance.now()+800}
@@ -607,14 +615,14 @@ $('#earAns').addEventListener('click',e=>{
 function earAnswer(a){
   const c=E.cur,fb=$('#earFb');if(!c||c.ans)return;
   const ok=a===c.s,ms=Math.max(0,performance.now()-E.t0);c.ans=true;
-  S.earStats.push({t:c.t,ok,ms});S.earStats=S.earStats.slice(-150);save();drillRec(c,ok,ms);
+  S.earStats.push({t:c.hook?'hook':c.t,ok,ms});S.earStats=S.earStats.slice(-150);save();drillRec(c,ok,ms);
   let msg;
   if(c.t==='deg'){msg=`${ok?'Yes.':'It was '+DEGL[c.n]+'.'} ${DEGL[c.n]} in ${KN[c.k]} is ${pcName(c.root+c.n,c.k)}.`;if(!ok)pluck(c.m,0,1.4,.3)}
   else if(c.t==='int'){msg=`${ok?'Yes.':'It was a '+INT_LONG[c.n].toLowerCase()+'.'} ${INT_LONG[c.n]}. ${shape(c.n)}`;if(!ok){pluck(c.lo,0,1.2,.28);pluck(c.lo+c.n,.7,1.2,.28)}}
   else{const q=CHQ[c.s];msg=`${ok?'Yes.':'It was '+q.n.toLowerCase()+'.'} ${q.n} is ${q.f}. ${q.d}`;if(!ok)chord(q.iv.map(x=>c.r+x),0,1.6)}
   rEar();fb.className='fbk '+(ok?'ok':'no');fb.textContent=msg;
   document.querySelectorAll('#earAns button').forEach(x=>{if(x.dataset.a===c.s)x.classList.add('ok');else if(x.dataset.a===a)x.classList.add('no')});
-  if(D.on&&c.drill)drillAfter(c,ok,ms);else if(HF.on)hfAfter(c,ok);else if(ok)setTimeout(()=>{if(E.cur===c)earNew()},1500);
+  if(c.hook)hookAfter(c,ok);else if(D.on&&c.drill)drillAfter(c,ok,ms);else if(HF.on)hfAfter(c,ok);else if(ok)setTimeout(()=>{if(E.cur===c)earNew()},1500);
 }
 $('#earType').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.ear.type=b.dataset.v;E.cur=null;save();rEar();$('#earFb').className='fbk';$('#earFb').textContent='Tap the button above to start.'};
 $('#earLvl').onclick=e=>{const b=e.target.closest('button');if(!b)return;S.ear.level=+b.dataset.v;E.cur=null;save();rEar()};
@@ -758,9 +766,10 @@ function hfFail(msg){hfSet(false);voiceMsg(msg+' Tapping still works.',true)}
 // listen once the question's sound has finished, so the app doesn't hear itself
 function hfSchedule(){hfStop();clearTimeout(HF.adv);const c=E.cur;
   if(!HF.on||!c||c.t==='echo'||c.ans)return;
-  hfLog('question '+c.t+' answer='+c.s+' | audio '+(ac?ac.state:'-')+' | listen in '+(({deg:3200,int:800,chord:1000}[c.t]||0)+900)+'ms');
+  const wait=c.hook?Math.round(E.hookWait*1000)+700:({deg:3200,int:800,chord:1000}[c.t]||0)+900;
+  hfLog('question '+c.t+' answer='+c.s+' | audio '+(ac?ac.state:'-')+' | listen in '+wait+'ms');
   HF.until=performance.now()+HF_WAIT;HF.hold=false;voiceMsg('Listen…');
-  HF.timer=setTimeout(()=>hfListen(c),({deg:3200,int:800,chord:1000}[c.t]||0)+900)}
+  HF.timer=setTimeout(()=>hfListen(c),wait)}
 function hfListen(c,tries){tries=tries||0;
   hfStop();if(!HF.on||E.cur!==c||c.ans||!earOn()){hfLog('listen skipped: '+(!HF.on?'hands-free off':E.cur!==c?'question changed':c.ans?'already answered':'Ear tab not visible'));return}
   // wait for the previous session to close and for the spoken feedback to finish
@@ -970,7 +979,7 @@ $('#tabs').addEventListener('click',()=>{if(D.on&&!earOn()){drillPause()}});
 const MIDI_KEY='woodshed-midi';
 var MK={on:false,access:null,held:new Set(),buf:[],timer:null,anchor:null,anchorT:0,echo:[]};
 function midiMsg(t,bad){const el=$('#earMidiMsg');el.className='small'+(bad?' no':'');el.textContent=t}
-function midiHint(){const t=S.ear.type;return t==='deg'?'Play the note you heard, any octave.':t==='int'?'Play any note, then the note that interval above it (or both together).':t==='chord'?'Play the chord: any key, any inversion.':'Play the phrase back.'}
+function midiHint(){const t=S.ear.type;return t==='hook'?'Play each note of the hook as it\'s asked for, any octave.':t==='deg'?'Play the note you heard, any octave.':t==='int'?'Play any note, then the note that interval above it (or both together).':t==='chord'?'Play the chord: any key, any inversion.':'Play the phrase back.'}
 function midiStatus(){if(!MK.on){midiMsg('');return}
   const ins=MK.access?[...MK.access.inputs.values()].filter(i=>i.state!=='disconnected'):[];
   midiMsg(ins.length?`🎹 ${ins.map(i=>i.name).join(', ')}. ${midiHint()}`:'No MIDI keyboard found. Plug it in (USB) and it will connect.',!ins.length)}
@@ -985,6 +994,7 @@ function midiIn(e){const [st,n,v]=e.data,cmd=st&0xF0;
   if(cmd===0x80||(cmd===0x90&&!v)){MK.held.delete(n);return}
   if(cmd!==0x90)return;
   MK.held.add(n);pluck(n,0,1.2,.25);  // most controllers are silent, so sound the key
+  if(MK.rec){MK.rec.notes.push({n,t:performance.now()});$('#hookRecMsg'+MK.rec.id).textContent=`Recording: ${MK.rec.notes.length} notes. Tap Stop when done.`;return}
   const c=E.cur;if(!MK.on||!c||!earOn())return;
   if(c.t==='echo'){if(c.ans||(MIC.iv||MIC.wait))return;MK.echo.push(mod(n));
     $('#earFb').className='fbk';$('#earFb').textContent='Played: '+MK.echo.map(x=>pcName(x,c.k)).join('  ');
@@ -1008,6 +1018,84 @@ function midiAnswer(a){const c=E.cur;hfLog('MIDI answer: '+a);earAnswer(a);
   midiMsg(`🎹 Played ${c.t==='deg'?DEGL[+a]:c.t==='int'?INTL[+a]:CHQ[a].n}. ${midiHint()}`)}
 $('#earMidi').onchange=e=>{if(e.target.checked)midiEnable();else midiSet(false)};
 try{if(localStorage.getItem(MIDI_KEY)==='1'&&navigator.requestMIDIAccess)setTimeout(midiEnable,0)}catch(e){}
+/* ---------- hooks: name each note of a song's melody ---------- */
+// Melodies as scale degrees from the key: 1-7 with b/# (b3, #4), or note names (G, Bb).
+// Each note goes to the nearest pitch to the one before; ^ forces a jump up, v a jump down; _ holds a beat.
+const HOOKS_KEY='woodshed-hooks';
+let HOOKS={};try{HOOKS=JSON.parse(localStorage.getItem(HOOKS_KEY)||'{}')||{}}catch(e){}
+const hooksSave=()=>{try{localStorage.setItem(HOOKS_KEY,JSON.stringify(HOOKS))}catch(e){}};
+// public-domain melodies, so the mode works before you've added your own
+const STARTER_HOOKS=[
+  ['Twinkle Twinkle (traditional)','1 1 ^5 5 6 6 5 _ 4 4 3 3 2 2 1'],
+  ['Ode to Joy (Beethoven)','3 3 4 5 5 4 3 2 1 1 2 3 3 _ 2 2'],
+  ['Frère Jacques (traditional)','1 2 3 1 1 2 3 1 3 4 5 _ 3 4 5'],
+  ['Happy Birthday (traditional)','5 5 6 5 1 7 _ 5 5 6 5 ^2 1'],
+  ['Amazing Grace (traditional)','5 1 _ 3 1 3 _ 2 1 _ 6 5'],
+  ['When the Saints (traditional)','1 3 4 5 _ _ v1 3 4 5 _ _ v1 3 4 5 3 1 3 2'],
+  ['Scarborough Fair (traditional)','1 1 ^5 5 2 b3 2 1'],
+  ['Jingle Bells (Pierpont)','3 3 3 _ 3 3 3 _ 3 5 v1 2 3'],
+  ['Here Comes the Bride (Wagner)','5 1 _ 1 1']];
+const DEG_TOK={0:'1',1:'b2',2:'2',3:'b3',4:'3',5:'4',6:'#4',7:'5',8:'b6',9:'6',10:'b7',11:'7'};
+function parseHook(text,k){const offs=[],durs=[],bad=[];let prev=null;
+  String(text||'').split(/[\s,|]+/).filter(Boolean).forEach(t=>{
+    if(/^[_\-–]$/.test(t)){if(durs.length)durs[durs.length-1]++;return}
+    let m=t.match(/^([\^v]?)([b#♭♯]?)([1-7])$/),dir,pc;
+    if(m){dir=m[1];pc=mod(MAJOR[+m[3]-1]+(/[b♭]/.test(m[2])?-1:/[#♯]/.test(m[2])?1:0))}
+    else if((m=t.match(/^([\^v]?)([A-Ga-g])([b#♭♯]?)$/))){dir=m[1];pc=mod(LET[m[2].toUpperCase()]+accOf(m[3])-(k||0))}
+    else{bad.push(t);return}
+    // nearest octave to the previous note (or to the home note for the first)
+    const ref=prev===null?0:prev;let o=ref+mod(pc-ref);if(o-ref>6)o-=12;
+    if(dir==='^'&&o<=ref)o+=12;if(dir==='v'&&o>=ref)o-=12;
+    offs.push(o);durs.push(1);prev=o});
+  return{offs,durs,bad}}
+// turn played notes back into hook text, adding ^/v only where the nearest-note rule would guess wrong
+function hookText(offs,durs){let prev=null;return offs.map((o,i)=>{const pc=mod(o),ref=prev===null?0:prev;let g=ref+mod(pc-ref);if(g-ref>6)g-=12;
+  const dir=g===o?'':o>ref?'^':'v';prev=o;return dir+DEG_TOK[pc]+' _'.repeat(Math.max(0,(durs[i]||1)-1))}).join(' ')}
+function hookList(){const own=S.songs.filter(s=>HOOKS[s.id]&&parseHook(HOOKS[s.id],parseKey(s.k)??0).offs.length>1)
+  .map(s=>({title:s.t,text:HOOKS[s.id],k:parseKey(s.k),id:s.id,own:true}));
+  return[...own,...STARTER_HOOKS.map(([title,text])=>({title,text,k:null}))]}
+function hookNew(){const list=hookList();
+  let h=E.hookPick?list.find(x=>x.id===E.hookPick):null;E.hookPick=null;
+  if(!h){const ow=list.filter(x=>x.own),pool=(ow.length&&Math.random()<.6?ow:list).filter(x=>!E.hook||x.title!==E.hook.title);h=pick(pool.length?pool:list)}
+  if(h.k!=null)$('#earKey').value=h.k;  // a song's hook plays in the song's key
+  const k=h.k??+$('#earKey').value,p=parseHook(h.text,h.k??0),L=S.ear.level,n=L===1?Math.min(4,p.offs.length):L===2?Math.min(8,p.offs.length):p.offs.length;
+  // keep it in a comfortable range: home note between A2 and G#3, nudged so the melody doesn't go too low
+  let root=45+mod(k-9);if(root+Math.min(...p.offs)<43)root+=12;
+  const minor=p.offs.some(o=>mod(o)===3)&&!p.offs.some(o=>mod(o)===4);
+  E.hook={title:h.title,own:!!h.own,k,root,offs:p.offs,durs:p.durs,n,res:[],minor};hookStep(0)}
+const HOOK_BEAT=.42;
+function hookMelody(t0,upto){const H=E.hook;let t=t0;for(let i=0;i<(upto??H.n);i++){pluck(H.root+H.offs[i],t,HOOK_BEAT*H.durs[i]*1.3,.3);t+=HOOK_BEAT*H.durs[i]}return t-t0}
+function cadence(r,minor){if(!minor)return playCad(r);chord([r,r+3,r+7,r+12],0);chord([r+5,r+8,r+12],.7);chord([r+7,r+11,r+14],1.4);chord([r,r+3,r+7,r+12],2.1,.9)}
+function hookStep(i){const H=E.hook,s=mod(H.offs[i]);
+  E.cur={t:'deg',s:String(s),n:s,k:H.k,root:H.root,m:H.root+H.offs[i],hook:H,hi:i,ans:false};
+  if(typeof MK!=='undefined'){MK.echo=[];MK.anchor=null;MK.buf=[]}
+  let wait;
+  if(!i){cadence(H.root,H.minor);wait=3.2+hookMelody(3.2)+.5;pluck(H.root+H.offs[0],wait,1.4,.3);wait+=.2}
+  else{pluck(H.root+H.offs[i-1],0,.9,.26);pluck(H.root+H.offs[i],.7,1.4,.3);wait=.8}
+  E.t0=performance.now()+wait*1000;E.hookWait=wait;
+  rEar();hookLine();
+  const fb=$('#earFb');fb.className='fbk';
+  fb.textContent=!i?`${H.title}. Name the first note.`:`Note ${i+1} of ${H.n}: the one after the ${DEGL[mod(H.offs[i-1])]}.`;
+  hfSchedule()}
+function hookLine(){const H=E.hook,el=$('#hookLine');if(!H||S.ear.type!=='hook'){el.innerHTML='';return}
+  el.innerHTML=`<b>${esc(H.title)}</b>${H.own?'':' · starter hook'}<br>`+H.offs.slice(0,H.n).map((o,i)=>{
+    const c=E.cur,done=i<H.res.length;
+    return `<span class="${done?(H.res[i]?'ok':'no'):c&&c.hi===i?'cur':''}">${done?DEGL[mod(o)]+' <small>'+pcName(H.root+o,H.k)+'</small>':c&&c.hi===i?'?':'·'}</span>`}).join(' ')}
+function intervalWords(a,b){const d=b-a;if(!d)return'the same note again';const n=Math.abs(d)%12||12;
+  return `${d>0?'up':'down'} ${Math.abs(d)>12?'an octave and ':''}${n===12&&Math.abs(d)<=12?'an octave':(n===12?'':'a ')+INT_LONG[n].toLowerCase()}`}
+function hookAfter(c,ok){const H=c.hook,i=c.hi;H.res[i]=ok;hookLine();
+  const name=pcName(c.m,H.k),iv=i?` That's ${intervalWords(H.root+H.offs[i-1],c.m)} from the ${DEGL[mod(H.offs[i-1])]}.`:'';
+  const fb=$('#earFb');fb.className='fbk '+(ok?'ok':'no');fb.textContent=`${ok?'Yes':'It was'} the ${DEGL[c.n]} (${name}).${iv}`;
+  if(!ok)pluck(c.m,.3,1.2,.3);
+  const next=()=>{if(E.cur!==c)return;if(i+1<H.n)hookStep(i+1);else hookDone()};
+  if(HF.on){hfStop();say(ok?'Yes.':'No, '+sayLabel(c,false)+'.',()=>{HF.adv=setTimeout(next,ok?300:900)})}
+  else setTimeout(next,ok?1100:2200)}
+function hookDone(){const H=E.hook,r=H.res.filter(Boolean).length;
+  E.cur.ans=true;hookLine();
+  const fb=$('#earFb');fb.className='fbk '+(r===H.n?'ok':'');
+  fb.textContent=`${H.title}: ${r} of ${H.n}. Here it is again. Sing along with the numbers.`;
+  const len=hookMelody(.3);
+  if(HF.on)HF.adv=setTimeout(()=>{if(S.ear.type==='hook'&&earOn()&&HF.on)earNew()},(len+2)*1000)}
 /* ---------- fretboard ---------- */
 let F={cur:null,t0:0,prev:null,listen:false,show:null};
 function fbStrings(){const o=INST[S.inst].open;if(S.fb.string==='all')return o.map((_,i)=>i);if(S.fb.string==='week')return[focus().str];return[+S.fb.string]}
@@ -1395,6 +1483,11 @@ function exportMidi(s){const k=parseKey(s.k),r=parseProg(s.prog,k??0);if(!r.bars
   const url=URL.createObjectURL(new Blob([midiFile(r,bpm,s.t||'Song')],{type:'audio/midi'})),a=document.createElement('a');
   a.href=url;a.download=(s.t||'song').replace(/[^\w\- ]+/g,'').trim().replace(/\s+/g,'-')+'.mid';document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),5000);return true}
+function hookHelp(s){const t=HOOKS[s.id];if(!t)return'Work the melody out by ear, then write it as scale degrees (1 to 7, b3, #4) or note names. Each note goes to the nearest pitch: ^ jumps up, v jumps down, _ holds a beat. Or play it on your MIDI keyboard.';
+  const p=parseHook(t,parseKey(s.k)??0);if(p.bad.length)return`Couldn't read: ${p.bad.join(', ')}. Use degrees (1 to 7, b3, #4) or note names, with ^ v _.`;
+  const k=parseKey(s.k);return `${p.offs.length} notes${k!==null?': '+p.offs.map(o=>pcName(k+o,k)).join(' '):'. Set the key to see note names.'}`}
+function card_refresh(id){const i=S.songs.findIndex(x=>x.id===id),card=document.querySelector(`.song[data-i="${i}"]`);if(!card)return;
+  card.querySelector(`input[data-hook="${id}"]`).value=HOOKS[id]||'';$('#hookRecMsg'+id).textContent=hookHelp(S.songs[i])}
 function rSongs(){
   $('#songList').innerHTML=S.songs.map((s,i)=>`<div class="song" data-i="${i}">
     <input class="plain t" data-f="t" value="${esc(s.t)}" aria-label="Song title">
@@ -1404,12 +1497,30 @@ function rSongs(){
     <label class="sel">Target bpm<input data-f="bpm" inputmode="numeric" value="${esc(s.bpm)}" placeholder="e.g. 120"></label>
     <label class="sel wide">Chords<input data-f="prog" value="${esc(s.prog||'')}" placeholder="G D Em C  or  I V vi IV" autocapitalize="off" spellcheck="false"></label>
     <button class="ghost" data-jam="${s.id}">Jam on it</button><button class="ghost" data-midi="${i}">Export MIDI</button><button class="ghost" data-del="${i}">Remove</button></div>
+    <div class="hookrow"><label class="sel wide">Hook (the melody)<input data-hook="${s.id}" value="${esc(HOOKS[s.id]||'')}" placeholder="5 5 6 5 ^1 7  or  G G A G C B" autocapitalize="off" spellcheck="false"></label>
+      <div class="line"><button class="ghost" data-hookrec="${s.id}">Record from keyboard</button><button class="ghost" data-hookgo="${s.id}">Practice this hook</button></div>
+      <p class="small" id="hookRecMsg${s.id}">${hookHelp(s)}</p></div>
     <div class="shp">${shapesHTML(s)}</div></div>`).join('')||'<p class="lede">No songs yet. Add the first one.</p>';
 }
-$('#songList').addEventListener('input',e=>{const el=e.target,card=el.closest('.song');if(!card||!el.dataset.f)return;S.songs[+card.dataset.i][el.dataset.f]=el.value;save();
+$('#songList').addEventListener('input',e=>{const el=e.target,card=el.closest('.song');
+  if(card&&el.dataset.hook){const id=+el.dataset.hook;if(el.value.trim())HOOKS[id]=el.value;else delete HOOKS[id];hooksSave();$('#hookRecMsg'+id).textContent=hookHelp(S.songs[+card.dataset.i]);return}
+  if(!card||!el.dataset.f)return;S.songs[+card.dataset.i][el.dataset.f]=el.value;save();
   if(el.dataset.f==='prog'||el.dataset.f==='k')card.querySelector('.shp').innerHTML=shapesHTML(S.songs[+card.dataset.i])});
 $('#songList').addEventListener('change',e=>{const el=e.target,card=el.closest('.song');if(!card||el.dataset.st===undefined)return;S.songs[+card.dataset.i].st[+el.dataset.st]=el.checked;save()});
-$('#songList').addEventListener('click',e=>{const mx=e.target.closest('button[data-midi]');
+$('#songList').addEventListener('click',e=>{const hr=e.target.closest('button[data-hookrec]'),hg=e.target.closest('button[data-hookgo]');
+  if(hg){const id=+hg.dataset.hookgo,s=S.songs.find(x=>x.id===id);if(!HOOKS[id]||parseHook(HOOKS[id],parseKey(s.k)??0).offs.length<2){alert('Add a hook of at least two notes first.');return}
+    E.hookPick=id;S.ear.type='hook';save();show('ear');earNew();return}
+  if(hr){const id=+hr.dataset.hookrec,s=S.songs.find(x=>x.id===id),msg=$('#hookRecMsg'+id);
+    if(MK.rec&&MK.rec.id===id){const ns=MK.rec.notes;MK.rec=null;hr.textContent='Record from keyboard';
+      if(ns.length<2){msg.textContent='Nothing recorded. Tap Record and play the melody.';return}
+      const k=parseKey(s.k);if(k===null){msg.textContent='Set the song\'s key first, so the notes can be written as degrees.';return}
+      // home note: the octave nearest the first note; holds from the gaps between notes
+      const home=48+k+12*Math.round((ns[0].n-48-k)/12-.4),gaps=ns.slice(1).map((x,i)=>x.t-ns[i].t),unit=[...gaps].sort((a,b)=>a-b)[Math.floor(gaps.length/2)]||400;
+      const durs=ns.map((x,i)=>i<gaps.length?Math.min(4,Math.max(1,Math.round(gaps[i]/unit))):1);
+      HOOKS[id]=hookText(ns.map(x=>x.n-home),durs);hooksSave();card_refresh(id);return}
+    if(!midiReady()){msg.textContent='Turn on "MIDI keyboard" on the Ear tab first, with your keyboard plugged in.';return}
+    MK.rec={id,notes:[]};hr.textContent='Stop recording';msg.textContent='Recording. Play the melody, then tap Stop.';return}
+  const mx=e.target.closest('button[data-midi]');
   if(mx){if(!exportMidi(S.songs[+mx.dataset.midi]))alert('Add some chords to this song first.');return}
   const st=e.target.closest('button[data-sty]');if(st){SH_STYLE=st.dataset.sty;document.querySelectorAll('#songList .song').forEach(c=>{c.querySelector('.shp').innerHTML=shapesHTML(S.songs[+c.dataset.i])});return}
   const pr=e.target.closest('button[data-practice]');
