@@ -1449,7 +1449,14 @@ try{if(!localStorage.getItem('woodshed-fills-1')){const p=S.songs.find(s=>/^peac
   localStorage.setItem('woodshed-fills-2','1')}
   if(!localStorage.getItem('woodshed-fills-3')){const m=S.songs.find(s=>/^my favou?rite things$/i.test(s.t.trim()));
   if(m&&m.prog==='Em7 Em7 Em7 Em7 Cmaj7 Cmaj7 Cmaj7 Cmaj7 Am7 D7 Gmaj7 Cmaj7 Gmaj7 Cmaj7 F#m7b5 B7'){m.prog='3/4 '+m.prog;save()}
-  localStorage.setItem('woodshed-fills-3','1')}}catch(e){}
+  localStorage.setItem('woodshed-fills-3','1')}
+  // Flowers, from the lead sheet: verse (8 bars), pre-chorus (4), chorus with its "love me better" tag (18)
+  if(!localStorage.getItem('woodshed-fills-4')){const f=S.songs.find(s=>/^flowers$/i.test(s.t.trim()));
+  if(f){if(!f.prog)f.prog='Am Dm G C Am Dm G C  Am Dm E E  Am Dm G C Am Dm G C Am Dm G C F E Am Dm G C';
+    if(!f.k)f.k='Am';if(!f.bpm)f.bpm='118';save();
+    // chorus hook, "I can buy myself flowers, write my name in the sand"; one step per eighth note
+    if(!HOOKS[f.id]){HOOKS[f.id]='E E E D C E F _ _ D D D C A ^E _ _';hooksSave()}}
+  localStorage.setItem('woodshed-fills-4','1')}}catch(e){}
 /* ---------- MIDI export: a song's chart as a .mid file for Logic or any DAW ---------- */
 // Standard MIDI file, type 1: a tempo track plus Chords, Bass and Drums, playing the chart PASSES times
 function midiFile(r,bpm,title){
